@@ -17,11 +17,13 @@ function render() {
   el("switch-label").textContent = registering ? "Already have an account?" : "New to MzHost?";
   el("switch-link").href = registering ? "#login" : "#register";
   el("switch-link").textContent = registering ? "Log in" : "Create an account";
-  el("confirm-group").hidden = !registering;
-  el("confirmation").required = registering;
+  el("login-password").hidden=registering;
+  el("password").disabled=registering;
+  el("verify-hint").hidden=!registering;
+  el("request-link").hidden=registering;
   el("password").autocomplete = registering ? "new-password" : "current-password";
   el("password").minLength = registering ? 12 : 1;
-  el("submit").textContent = title;
+  el("submit").textContent = registering ? "Send verification link" : title;
   el("submit").disabled = offline || busy || checking;
   el("offline").hidden = !offline;
   el("server-link").hash = registering ? "register" : "login";
@@ -38,11 +40,9 @@ async function api(action, data) {
 
 function resetPasswords() {
   el("password").value = "";
-  el("confirmation").value = "";
-  el("password").type = el("confirmation").type = "password";
+  el("password").type = "password";
   el("reveal").textContent = "Show";
   el("reveal").setAttribute("aria-label", "Show password");
-  el("confirmation").setCustomValidity("");
 }
 
 window.addEventListener("hashchange", () => {
@@ -52,29 +52,26 @@ window.addEventListener("hashchange", () => {
 });
 el("reveal").addEventListener("click", () => {
   const show = el("password").type === "password";
-  el("password").type = el("confirmation").type = show ? "text" : "password";
+  el("password").type = show ? "text" : "password";
   el("reveal").textContent = show ? "Hide" : "Show";
   el("reveal").setAttribute("aria-label", show ? "Hide password" : "Show password");
 });
-el("account-form").addEventListener("input", () => el("confirmation").setCustomValidity(""));
 el("account-form").addEventListener("submit", async event => {
   event.preventDefault();
   if (busy || offline || checking) return;
   const registering = location.hash === "#register";
-  if (registering && el("confirmation").value !== el("password").value) {
-    el("confirmation").setCustomValidity("Enter the same password in both fields.");
-    el("confirmation").reportValidity();
-    return;
-  }
   busy = true;
   render();
   el("message").textContent = registering ? "Creating your account…" : "Logging in…";
   try {
-    const result = await api(registering ? "register" : "login", {email: el("email").value, password: el("password").value});
+    const data={email:el("email").value};
+    if(!registering) data.password=el("password").value;
+    const result = await api(registering ? "register" : "login",data);
+    if(result.pending) {el("message").textContent=result.message;return;}
     email = result.email;
     resetPasswords();
     el("message").textContent = registering ? "Your account is ready." : "";
-    location.assign("./dashboard.html");
+    location.assign("./dashboard");
   } catch (error) {
     el("message").textContent = error.message;
   } finally {

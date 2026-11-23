@@ -5,15 +5,17 @@ const path = require("node:path");
 const accounts = require("./local-accounts.cjs");
 
 const files = new Map([
+  ["/verify", ["verify.html", "text/html; charset=utf-8"]],
+  ["/verify.js", ["verify.js", "text/javascript; charset=utf-8"]],
   ["/", ["index.html", "text/html; charset=utf-8"]],
-  ["/index.html", ["index.html", "text/html; charset=utf-8"]],
+  ["/file-links.js", ["file-links.js", "text/javascript; charset=utf-8"]],
   ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
   ["/home.js", ["home.js", "text/javascript; charset=utf-8"]],
-  ["/dashboard.html", ["dashboard.html", "text/html; charset=utf-8"]],
+  ["/dashboard", ["dashboard.html", "text/html; charset=utf-8"]],
   ["/dashboard.css", ["dashboard.css", "text/css; charset=utf-8"]],
   ["/workspace.js", ["workspace.js", "text/javascript; charset=utf-8"]],
   ["/dashboard.js", ["dashboard.js", "text/javascript; charset=utf-8"]],
-  ["/account.html", ["account.html", "text/html; charset=utf-8"]],
+  ["/account", ["account.html", "text/html; charset=utf-8"]],
   ["/account.css", ["account.css", "text/css; charset=utf-8"]],
   ["/account.js", ["account.js", "text/javascript; charset=utf-8"]],
   ["/images/MzHostAuthPanel.png", ["images/MzHostAuthPanel.png", "image/png"]],
@@ -33,6 +35,7 @@ const handleAccount = useMongo ? async (...args)=>(await require("./mongo-accoun
   localTest: process.env.LOCAL_TEST_ACCOUNT === "true" && process.env.NODE_ENV !== "production"
 });
 const server = http.createServer((request, response) => {
+  for(const {key,value} of securityHeaders) response.setHeader(key,value);
   if (request.url.startsWith("/api/")) {
     handleAccount(request.url.slice(5), request, response).catch(error => {
       const status=[400,413].includes(error.status)?error.status:503;
@@ -41,7 +44,14 @@ const server = http.createServer((request, response) => {
     });
     return;
   }
-  const file = files.get(request.url.split("?")[0]);
+  const pathname=request.url.split("?")[0];
+  const redirected=pathname==="/index" || pathname==="/index.html" ? "/" :
+    (/^\/(account|dashboard|verify)\.html$/.test(pathname) ? pathname.slice(0,-5) : null);
+  if(redirected && ["GET","HEAD"].includes(request.method)) {
+    response.writeHead(308,{Location:redirected+request.url.slice(pathname.length)}).end();
+    return;
+  }
+  const file = files.get(pathname);
   if (!file || !["GET", "HEAD"].includes(request.method)) {
     response.writeHead(404).end();
     return;
@@ -59,4 +69,5 @@ server.on("error", error => {
   console.error(error.message);
   process.exitCode = 1;
 });
+const securityHeaders=require("../../vercel.json").headers[0].headers;
 server.listen(port, "127.0.0.1", () => console.log("MzHost preview on http://127.0.0.1:" + port));

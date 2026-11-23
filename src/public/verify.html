@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer"><title>Verify email | MzHost</title>
+  <link rel="icon" href="./images/MzHostLogo.png"><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./account.css">
+  <script defer src="./verify.js"></script>
+  <script defer src="./file-links.js"></script>
+</head><body class="account-page">
+  <main class="account-layout"><div class="account-column">
+    <a class="brand" href="./"><span class="brand-icon"></span>MzHost</a>
+    <section class="form-area">
+      <h1 id="heading">Verify your email<span class="period">.</span></h1>
+      <p class="switch-copy" id="intro">Choose a password to confirm your email address and finish setting up your account.</p>
+      <form id="verify-form" method="post" hidden>
+        <label for="new-password">New password</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+        <p class="hint">Use at least 12 characters.</p>
+        <label for="repeat-password">Confirm password</label><input id="repeat-password" type="password" autocomplete="new-password" maxlength="256" required>
+        <button id="confirm" class="button primary submit">Verify email and save password</button>
+      </form>
+      <p role="status" id="message"></p>
+      <a class="logout" id="next" href="./account#register">Request a new link</a>
+      <noscript>Enable JavaScript to verify your email.</noscript>
+    </section><p class="account-credit">&copy; 2026 MzHost</p></div>
+    <aside class="account-art" aria-hidden="true"><div class="art-heading"><span class="brand-icon"></span><p>Your<br>workspace<span class="period">.</span></p></div></aside>
+  </main>
+</body></html>

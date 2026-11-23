@@ -27,3 +27,4 @@
   .account-column { width: 100%; padding: 26px max(6%, 18px); }
   .account-art { display: none; }
 }
+.account-page [hidden] {display:none !important;}

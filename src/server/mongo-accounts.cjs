@@ -9,33 +9,55 @@ async function connect(secure) {
     const db=client.db(process.env.MONGODB_DB || "mzhost_preview");
     const users=db.collection("users"), sessions=db.collection("sessions");
     const workspaces=db.collection("workspaces"), limits=db.collection("auth_attempts");
-    await Promise.all([sessions,limits].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
+    const pending=db.collection("email_verifications");
+    const audit=db.collection("audit_events");
+    await Promise.all([sessions,limits,pending,audit].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
+    await pending.createIndex({digest:1},{unique:true});
     return accounts({
+      audit:item=>audit.insertOne({...item,expires:new Date(Date.now()+30*86400000)}),
       user:email=>users.findOne({_id:email}),
       session:(token,now)=>sessions.findOne({_id:token,expires:{$gt:new Date(now)}}),
       logout:token=>sessions.deleteOne({_id:token}),
-      async allowAttempt(ip,now) {
-        const bucket=Math.floor(now/60000);
-        const record=await limits.findOneAndUpdate({_id:ip+"-"+bucket},{$inc:{count:1},$setOnInsert:{expires:new Date((bucket+2)*60000)}},{upsert:true,returnDocument:"after"});
-        return record.count<=12;
+      async allowAttempt(key,now,max=12,period=60000) {
+        const bucket=Math.floor(now/period);
+        const record=await limits.findOneAndUpdate({_id:key+"-"+bucket},{$inc:{count:1},$setOnInsert:{expires:new Date((bucket+2)*period)}},{upsert:true,returnDocument:"after"});
+        return record.count<=max;
       },
-      async authenticate({register,email,salt,hash,oldToken,token,expires}) {
+      async issue(email,digest,now) {
         try {
-          await client.withSession(session=>session.withTransaction(async ()=>{
-            if(register) await users.insertOne({_id:email,salt,hash},{session});
-            if(oldToken) await sessions.deleteOne({_id:oldToken},{session});
-            await sessions.insertOne({_id:token,email,expires:new Date(expires)},{session});
-          }));
+          await pending.updateOne({_id:email,sent:{$lte:now-60000}},{$set:{digest,sent:now,expires:new Date(now+1800000)}},{upsert:true});
           return true;
-        } catch(error) {if(register && error.code===11000) return false;throw error;}
+        } catch(error) {if(error.code===11000) return false;throw error;}
+      },
+      async confirm(digest,salt,hash,now) {
+        return client.withSession(session=>session.withTransaction(async ()=>{
+          const ticket=await pending.findOneAndDelete({digest,expires:{$gt:new Date(now)}},{session});
+          if(!ticket) return null;
+          const email=ticket._id;
+          const old=await users.findOne({_id:email},{session});
+          if(old?.verifiedAt) return null;
+          await users.updateOne({_id:email},{$set:{salt,hash,verifiedAt:new Date(now)}},{upsert:true,session});
+          await sessions.deleteMany({email},{session});
+          return {email,created:!old};
+        }));
+      },
+      async authenticate({email,oldToken,token,expires}) {
+        await client.withSession(session=>session.withTransaction(async ()=>{
+          if(oldToken) await sessions.deleteOne({_id:oldToken},{session});
+          await sessions.insertOne({_id:token,email,expires:new Date(expires)},{session});
+        }));
       },
       async workspace(email) {
         return await workspaces.findOne({_id:email},{projection:{_id:0}}) || {revision:0,workspace:{servers:[],selected:""}};
       },
       async save(email,revision,workspace) {
         try {
-          const result=await workspaces.updateOne({_id:email,revision},{$set:{workspace},$inc:{revision:1}},{upsert:revision===0});
-          return Boolean(result.modifiedCount || result.upsertedCount);
+          const previous=await workspaces.findOneAndUpdate({_id:email,revision},{$set:{workspace},$inc:{revision:1}},
+            {upsert:revision===0,returnDocument:"before",projection:{"workspace.servers.id":1}});
+          if(!previous && revision!==0) return false;
+          const before=new Set((previous?.workspace?.servers || []).map(s=>s.id));
+          const after=new Set(workspace.servers.map(s=>s.id));
+          return {added:[...after].filter(id=>!before.has(id)).length,removed:[...before].filter(id=>!after.has(id)).length};
         } catch(error) {if(error.code===11000) return false;throw error;}
       }
     },{secure});

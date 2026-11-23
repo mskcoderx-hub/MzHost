@@ -451,7 +451,7 @@ async function initialize() {
     const response=await fetch("/api/session",{cache:"no-store"});
     if(!response.ok) throw Error("The account service is unavailable.");
     const session=await response.json();
-    if(!session.email) { location.replace("./account.html#login");return; }
+    if(!session.email) { location.replace("./account#login");return; }
     owner="account:"+session.email;
     cloud=session.workspaceStorage==="mongodb";
   }
