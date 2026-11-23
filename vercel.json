@@ -1,0 +1,8 @@
+{
+  "framework": null,
+  "outputDirectory": "src/public",
+  "buildCommand": null,
+  "rewrites": [
+    {"source": "/api/:action(session|login|register|logout|workspace)", "destination": "/api/preview?action=:action"}
+  ]
+}

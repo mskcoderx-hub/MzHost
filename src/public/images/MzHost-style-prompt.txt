@@ -1,0 +1,7 @@
+Design [asset or page] for MzHost, a hosting platform for Python and Node.js bots. Use the attached MzHost logo and route-line banner as the visual references. Reuse the supplied logo artwork at its original proportions. Preserve the rounded black M, the diagonal cut that forms the z, and its small yellow tip. Spell the name exactly MzHost.
+
+Build on white (#FFFFFF) with optional pale gray surfaces. Use pure black (#000000) for the wordmark, headings, and body text. Use signal yellow (#FFD23F) sparingly so it draws the eye to one important detail. Set headings in a bold, tightly spaced sans serif and keep labels simple and readable.
+
+For large graphics, carry the banner’s route motif forward: thin parallel graphite lines with smooth bends that echo the diagonal of the z. Let one thicker yellow path run through them, with a small open-circle endpoint. Keep the logo and text in clear space and let the lines extend toward an outer edge.
+
+For the website, use white space to group content, pale gray dividers between sections, and black text on yellow primary buttons. Keep route artwork in the hero or section edges so forms, tables, and dashboards stay easy to scan.

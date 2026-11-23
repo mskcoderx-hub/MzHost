@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="A first look at MzHost, a workspace for hosting Python and Node.js bots.">
+  <title>MzHost — Bot hosting</title>
+  <link rel="icon" href="./images/MzHostLogo.png">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./home.js" defer></script>
+</head>
+<body id="top">
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a href="#top" class="brand" aria-label="MzHost home"><span class="brand-icon"></span>MzHost</a>
+      <nav aria-label="Main navigation"><a href="#workspace">Platform</a><a href="#runtimes">Runtimes</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></nav>
+      <div class="account-links"><a href="./account.html#login" class="text-link">Log in</a><a href="./account.html#register" class="button nav-button">Create account</a></div>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-art" aria-hidden="true"></div>
+      <div class="wrap hero-inner">
+        <p class="eyebrow"><span class="signal"></span> Bot hosting</p>
+        <h1 id="hero-title">A home for<br>your next bot<span class="period">.</span></h1>
+        <p class="intro">Run your Python and Node.js bots in one place.<br class="desktop-break"> Follow deployments, read logs, and keep an eye on resources.</p>
+        <div class="actions"><a class="button primary" href="./dashboard.html?demo">Explore the dashboard <span class="arrow" aria-hidden="true"></span></a><a class="text-link" href="#runtimes">View runtimes</a></div>
+      </div>
+    </section>
+
+    <section class="wrap workspace-section" id="workspace" aria-labelledby="workspace-title">
+      <div class="window">
+        <div class="window-bar"><div class="window-label"><span class="tiny-mark" aria-hidden="true"></span><span>MzHost <b>/</b> Workspace</span></div><span class="sample">Interactive preview</span></div>
+        <div class="work-body">
+          <aside class="side">
+            <p class="side-heading">Projects</p>
+            <div class="project-list" role="group" aria-label="Select a sample project">
+              <button class="project selected" data-project="relay" aria-pressed="true"><span class="project-initial">R</span>relay-bot</button>
+              <button class="project" data-project="dispatch" aria-pressed="false"><span class="project-initial">D</span>dispatch-bot</button>
+            </div>
+          </aside>
+          <div class="work-main">
+            <div class="project-head"><div><p class="mini-label">Project overview</p><h2 id="workspace-title">relay-bot</h2></div><span class="running"><i></i> Running</span></div>
+            <div class="metrics">
+              <div><span>Runtime</span><strong id="runtime">Python</strong></div>
+              <div><span>Memory</span><strong><span id="memory">84</span> <small>MB</small></strong></div>
+              <div><span>CPU usage</span><strong><span id="cpu">2.4</span><small>%</small></strong></div>
+            </div>
+            <div class="console"><div class="console-head"><span>Runtime logs</span><span id="entrypoint">main.py</span></div><pre id="logs" aria-live="polite">09:41:00  Starting Python runtime
+09:41:01  Loaded main.py
+09:41:02  Relay connected. Listening for events.</pre></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap runtimes lower" id="runtimes" aria-labelledby="runtime-title">
+      <h2 id="runtime-title">Choose your runtime<span class="period">.</span></h2>
+      <div class="runtime-list">
+        <article><span class="filetype">.py</span><div><h3>Python</h3><p>For event-driven bots, scheduled tasks, and scripts.</p></div><button data-open="relay" class="runtime-link" aria-label="Preview the Python project">Preview <span class="arrow" aria-hidden="true"></span></button></article>
+        <article><span class="filetype">.js</span><div><h3>Node.js</h3><p>For JavaScript bots, command handlers, and workers.</p></div><button data-open="dispatch" class="runtime-link" aria-label="Preview the Node.js project">Preview <span class="arrow" aria-hidden="true"></span></button></article>
+      </div>
+    </section>
+    <section class="feature-band lower" aria-labelledby="features-title">
+      <div class="wrap feature-layout">
+        <div class="feature-intro">
+          <h2 id="features-title">Inside a <br>running bot<span class="period">.</span></h2>
+          <p>When a bot goes quiet, start with two questions. Did it connect? How much memory is it using?</p>
+          <a href="#workspace" class="text-link">Inspect the sample bot <span class="arrow" aria-hidden="true"></span></a>
+        </div>
+        <div class="feature-readout">
+          <div class="readout-header"><strong>relay-bot</strong><span>Sample session</span></div>
+          <div class="readout-row">
+            <h3>Startup logs</h3>
+            <p>Follow your bot from its entry file to its first connection.</p>
+            <samp><time>09:41:02</time> Relay connected.</samp>
+          </div>
+          <div class="readout-row">
+            <h3>Memory usage</h3>
+            <p>See how much of your plan’s memory the bot is using.</p>
+            <div class="memory-reading"><meter min="0" max="512" value="84" aria-label="Sample bot memory usage, 84 of 512 MB">84 of 512 MB</meter><span>84 / 512 MB</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="wrap lower pricing" id="pricing" aria-labelledby="pricing-title">
+      <div class="pricing-heading">
+        <h2 id="pricing-title">Bot hosting plans<span class="period">.</span></h2>
+        <p>Proposed monthly prices in USD. Each plan covers one Python or Node.js bot. Prices and limits may change before launch.</p>
+      </div>
+      <table class="plan-table" aria-labelledby="pricing-title">
+        <thead><tr><th scope="col">Plan</th><th scope="col">Memory</th><th scope="col">Disk</th><th scope="col">Monthly</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Starter</th><td>512 MB</td><td>1 GB</td><td>$2</td></tr>
+          <tr><th scope="row">Standard</th><td>1 GB</td><td>2 GB</td><td>$4</td></tr>
+          <tr><th scope="row">Plus</th><td>2 GB</td><td>4 GB</td><td>$7</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="wrap feedback lower" id="feedback" aria-labelledby="feedback-title">
+      <div class="feedback-copy">
+        <h2 id="feedback-title">What our clients say<span class="period">.</span></h2>
+        <p>MzHost is in preview. The first stories from people hosting their bots here will appear after launch.</p>
+      </div>
+    </section>
+    <section class="wrap faq lower" id="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">Questions<span class="period">.</span></h2>
+      <div class="faq-list">
+        <details><summary>What can I try in the preview?</summary><p>Create a test server, edit files, inspect logs, and restore a backup in the local dashboard.</p></details>
+        <details><summary>Can I deploy my own bot yet?</summary><p>You can upload sample files and test the deployment workflow in your browser. Live bot hosting on the VPS will come later.</p></details>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap footer-main">
+      <div>
+        <a href="#top" class="brand" aria-label="MzHost home"><span class="brand-icon"></span>MzHost</a>
+        <p>Bot hosting for Python and Node.js.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <a href="./dashboard.html?demo">Dashboard preview</a>
+        <a href="#runtimes">Runtimes</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+    </div>
+    <div class="wrap footer-credit">
+      <p>&copy; 2026 MzHost. All rights reserved.</p>
+      <p>Part of the <a href="https://mskhub.store/">MSKHub</a> &amp; ZeyModz family.</p>
+      <a class="text-link" href="#top">Back to top</a>
+    </div>
+  </footer>
+</body>
+</html>

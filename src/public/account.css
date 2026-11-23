@@ -1,0 +1,29 @@
+.account-layout { min-height: 100svh; display: grid; grid-template-columns: 1.06fr 1fr; padding: 16px; gap: 16px; }
+.account-column { display: flex; flex-direction: column; align-items: flex-start; padding: clamp(16px, 3vw, 48px); }
+.form-area { width: min(100%, 400px); margin: auto; padding-block: 44px; }
+.form-area h1 { font-size: clamp(46px, 4.5vw, 72px); margin: 0 0 14px; line-height: 1.02; }
+.switch-copy, .offline { font-size: 15px; line-height: 1.6; color: var(--muted); }
+.switch-copy a, .offline a, .logout { color: #111; font-weight: 650; text-decoration: underline; text-underline-offset: 4px; }
+.offline { margin-top: 18px; border-left: 3px solid var(--yellow); padding-left: 12px; }
+.form-area form { margin-top: 30px; }
+.form-area label { display: block; margin: 18px 0 7px; font-size: 14px; font-weight: 650; }
+.form-area input { width: 100%; min-height: 47px; border: 1px solid #a9a9a4; border-radius: 6px; font: inherit; color: #111; background: white; padding: 10px 12px; }
+.form-area input:focus { outline: 2px solid #171716; outline-offset: 1px; }
+.password-field { position: relative; }
+.password-field input { padding-right: 72px; }
+.password-field button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 8px; font-size: 13px; font-weight: 650; }
+.hint, .account-credit { color: var(--muted); font-size: 13px; }
+.hint { margin-top: 8px; }
+.submit { width: 100%; border: 0; margin-top: 24px; }
+.submit:disabled { opacity: .65; cursor: default; }
+.logout { display: block; background: transparent; border: none; padding: 12px 0; margin-top: 8px; }
+#message { margin-top: 12px; line-height: 1.5; font-size: 14px; }
+#identity { overflow-wrap: anywhere; }
+.account-art { position: relative; border-radius: 14px; background: #edf0f2 url("./images/MzHostAuthPanel.png") center / cover no-repeat; }
+.art-heading { position: absolute; top: 9%; left: 9%; }
+.art-heading p { font-size: clamp(52px, 6.5vw, 110px); line-height: .94; font-weight: 720; letter-spacing: -.075em; margin-top: 20px; }
+@media (max-width: 700px) {
+  .account-layout { display: flex; padding: 0; }
+  .account-column { width: 100%; padding: 26px max(6%, 18px); }
+  .account-art { display: none; }
+}

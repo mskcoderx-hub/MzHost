@@ -1,0 +1,13 @@
+{
+  "name": "mzhost",
+  "private": true,
+  "scripts": {
+    "start": "node src/server/preview.cjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "mongodb": "^6.22.0"
+  }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in | MzHost</title>
+  <link rel="icon" href="./images/MzHostLogo.png">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./account.css">
+  <script defer src="./account.js"></script>
+</head>
+<body class="account-page">
+  <main class="account-layout">
+    <div class="account-column">
+      <a href="./index.html" class="brand" aria-label="MzHost home"><span class="brand-icon"></span>MzHost</a>
+      <section class="form-area" aria-labelledby="account-title">
+        <h1 id="account-title">Log in<span class="period">.</span></h1>
+        <div id="signed-out">
+          <p class="switch-copy"><span id="switch-label">New to MzHost?</span> <a id="switch-link" href="#register">Create an account</a></p>
+          <noscript>Enable JavaScript to use the account forms.</noscript>
+          <p class="offline" id="offline" hidden>For local accounts, <a id="server-link" href="http://127.0.0.1:4181/account.html#login">open this form on the preview server</a>.</p>
+          <form id="account-form" method="post">
+            <label for="email" id="identity-label">Email or username</label>
+            <input type="text" id="email" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
+            <label for="password">Password</label>
+            <div class="password-field"><input type="password" id="password" autocomplete="current-password" maxlength="256" required><button type="button" id="reveal" aria-label="Show password">Show</button></div>
+            <div id="confirm-group" hidden>
+              <p class="hint" id="password-help">Use at least 12 characters.</p>
+              <label for="confirmation">Confirm password</label>
+              <input type="password" id="confirmation" autocomplete="new-password" maxlength="256">
+            </div>
+            <button type="submit" class="button primary submit" id="submit" disabled>Log in</button>
+          </form>
+        </div>
+        <div id="signed-in" hidden>
+          <p class="switch-copy">Signed in as <strong id="identity"></strong></p>
+          <a class="button primary submit" href="./dashboard.html">Open dashboard</a>
+          <button type="button" class="logout" id="logout">Log out</button>
+        </div>
+        <p role="status" id="message"></p>
+      </section>
+      <p class="account-credit">&copy; 2026 MzHost</p>
+    </div>
+    <aside class="account-art" aria-label="MzHost bot hosting">
+      <div class="art-heading"><span class="brand-icon" aria-hidden="true"></span><p>Bot<br>hosting<span class="period">.</span></p></div>
+    </aside>
+  </main>
+</body>
+</html>

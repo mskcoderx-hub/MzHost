@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard | MzHost</title>
+  <link rel="icon" href="./images/MzHostLogo.png">
+  <link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./dashboard.css">
+  <script src="./workspace.js" defer></script><script src="./dashboard.js" defer></script>
+</head>
+<body class="studio">
+<a class="skip" href="#panel">Skip to server controls</a>
+<header class="mast">
+  <a class="brand" href="./index.html" aria-label="MzHost home"><span class="brand-icon"></span>MzHost</a>
+  <span class="mast-divider"></span><span class="mast-title">Control panel</span>
+  <div class="mast-right"><span class="sandbox-tag">Local sandbox</span><a href="./account.html#login">Account</a></div>
+</header>
+<div class="shell">
+  <aside class="rail">
+    <label class="section-label" for="server-switch">Workspace</label>
+    <select id="server-switch" aria-label="Select server"></select>
+    <button class="add-server" data-action="create-server">+ New server</button>
+    <p class="section-label nav-label">Server management</p>
+    <nav id="views" aria-label="Server management">
+      <a href="#servers">My servers</a><a href="#overview">Overview</a><a href="#console">Console</a><a href="#files">Files</a>
+      <a href="#deployments">Deployments</a>
+      <a href="#environment">Environment</a><a href="#configuration">Configuration</a>
+      <a href="#backups">Backups</a><a href="#activity">Activity</a>
+    </nav>
+    <p class="rail-note">Server actions are simulated. Use sample files and test values here.</p>
+  </aside>
+  <main class="desk" id="panel" tabindex="-1">
+    <div id="context"></div><div id="content"></div>
+    <p id="sync-status" role="status" hidden></p>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+</div>
+<dialog id="modal" aria-labelledby="modal-title"><form id="modal-form"><h2 id="modal-title"></h2><div id="modal-body"></div><p id="modal-error" role="alert"></p><div class="modal-actions"><button type="button" data-action="cancel">Cancel</button><button class="accent" id="modal-submit">Save</button></div></form></dialog>
+<input type="file" multiple id="upload" hidden>
+<input type="file" multiple webkitdirectory id="folder-upload" hidden>
+<noscript>Enable JavaScript to open the MzHost dashboard.</noscript>
+</body></html>
