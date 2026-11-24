@@ -1,5 +1,6 @@
 const { randomBytes, scrypt, createHash, timingSafeEqual } = require("node:crypto");
 const {record:writeEvent,mailSettings,sendVerification}=require("./notifications.cjs");
+const {runtimeOwner,runtimeTest}=require("./runtime-test.cjs");
 const derive = require("node:util").promisify(scrypt);
 const week = 7 * 24 * 60 * 60;
 const digest = value => createHash("sha256").update(value).digest("hex");
@@ -51,10 +52,12 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
     const now = Date.now();
     const host = req.headers.host;
     if (!secure && !/^(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(host || "")) return send(403, {});
-    if (action === "workspace" || (action === "session" && req.method === "GET")) {
+    if(action==="runtime" && req.headers.authorization) return runtimeTest({req,send,readBody,store,now});
+    if (action === "workspace" || action==="runtime" || (action === "session" && req.method === "GET")) {
       const session = await store.session(oldToken,now);
       const verified=session && (session.email==="1" ? localTest : (await store.user(session.email))?.verifiedAt);
       const email=verified ? session.email : null;
+      if(action==="runtime") return runtimeTest({req,send,readBody,store,email,sameOrigin,now});
       if(action==="workspace") {
         if(!store.workspace) return send(404,{});
         if(!email) {console.info(JSON.stringify({event:"workspace.access_denied",time:new Date().toISOString()}));return send(401,{});}
@@ -76,7 +79,7 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
         if(saved?.removed) await record("workspace","preview.server_removed",email);
         return send(saved?200:409,saved?{revision:revision+1}:{message:"Workspace changed."});
       }
-      return send(200,{email,workspaceStorage:store.workspace?"mongodb":"tab"});
+      return send(200,{email,workspaceStorage:store.workspace?"mongodb":"tab",vpsTest:Boolean(store.runtime && runtimeOwner(email))});
     }
     if (!["login","register","verify","logout"].includes(action)) return send(404, {});
     if (req.method !== "POST") return send(405, {});

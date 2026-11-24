@@ -15,6 +15,44 @@ const routes = [...views,"setup"];
 let view = routes.includes(location.hash.slice(1)) ? location.hash.slice(1) : "servers";
 let draft, reviewing=false;
 let cloud=false, revision=0, acknowledged, syncing=false, conflict=false;
+let vpsEnabled=false, vpsStatus=null, vpsPending=false, vpsReading=false;
+
+function renderVps() {
+  if(!$("vps-state")) return;
+  const s=active(), remote=vpsStatus;
+  const same=remote?.serverId===s?.id;
+  const occupied=remote?.serverId && !same && !["idle","stopped","exited","failed"].includes(remote.state);
+  $("vps-state").textContent=!remote?"Checking worker connection…":!remote.online?"Worker offline":occupied?"Another project is using the test worker":same?"Worker online / "+remote.state:"Worker online / ready";
+  $("vps-output").textContent=same && remote.logs ? remote.logs : "Awaiting process output.";
+  $("vps-run").disabled=vpsPending || !remote?.online || occupied || !W.startup(s).selected || syncedChangesPending();
+  $("vps-stop").disabled=vpsPending || !remote?.serverId || !remote.online || ["idle","stopped"].includes(remote.state);
+  $("vps-stop").textContent=occupied?"Stop other test":"Stop VPS test";
+}
+function syncedChangesPending() {return syncing || acknowledged!==state || conflict;}
+async function refreshVps() {
+  if(!vpsEnabled || view!=="console" || vpsReading || vpsPending || document.hidden) return;
+  vpsReading=true;
+  try {
+    const response=await fetch("/api/runtime",{cache:"no-store"});
+    if(!response.ok) throw Error();
+    vpsStatus=await response.json();
+  } catch {vpsStatus=null;}
+  finally {vpsReading=false;renderVps();}
+}
+async function controlVps(action) {
+  if(vpsPending || !active()) return;
+  if(action==="run" && syncedChangesPending()) {flash("Wait for the workspace to finish saving.");return;}
+  if(action==="stop" && vpsStatus?.serverId!==active().id && !confirm("Stop the other project on the private VPS worker?")) return;
+  vpsPending=true;renderVps();
+  try {
+    const response=await fetch("/api/runtime",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action,serverId:action==="stop"?vpsStatus?.serverId:active().id,revision})});
+    const result=await response.json();
+    if(!response.ok) throw Error(result.message || "VPS request failed.");
+    vpsStatus=result;
+  } catch(error){flash(error.message);}
+  finally {vpsPending=false;renderVps();}
+}
 
 async function saveCloud() {
   if (!cloud || syncing || conflict || acknowledged===state) return;
@@ -38,7 +76,7 @@ async function saveCloud() {
   } catch(error) {
     status.textContent=error.message+" ";
     status.insertAdjacentHTML("beforeend",button(conflict?"Reload":"Retry save",conflict?"reload":"retry-save"));
-  } finally { syncing=false; }
+  } finally { syncing=false;renderVps(); }
 }
 
 function flash(message) {
@@ -84,6 +122,8 @@ function head(title, right="") {
   return '<div class="panel-head"><h2>'+title+'</h2>'+right+'</div>';
 }
 function controls(s) {
+  if(vpsEnabled && view==="console") return "";
+  if(vpsEnabled) return '<div class="controls"><a href="#console">Open VPS console</a></div>';
   if (s.firstDeploy && !s.started) return '<div class="controls"><a href="#files">Open files</a></div>';
   return '<div class="controls">'+(s.started ? button("Restart","restart","","")+button("Stop server","stop","","") : button("Start server","start","","accent"))+'</div>';
 }
@@ -102,6 +142,10 @@ function logs(s, limit) {
   return '<div class="log-output" id="output">'+s.logs.slice(-limit).map(l=>'<div class="log-line"><time>'+time(l.time)+'</time><span>'+escapeHTML(l.message)+'</span></div>').join("")+(s.logs.length?"":'<p>Start the server to see its logs.</p>')+'</div>';
 }
 function consoleBox(s, full) {
+  if(vpsEnabled && full) return '<section class="box terminal">'+head("Private VPS test",'<span id="vps-state" role="status"></span>')+
+    '<p>Run your saved project with the standard library. This test has 128 MB RAM, read-only project files and no network access.</p>'+
+    '<div class="console-start"><code>'+escapeHTML(W.startup(s).command || "Choose a startup file")+'</code><a href="#files">Manage files</a></div>'+
+    '<pre id="vps-output" class="log-output" aria-label="VPS process output"></pre><div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Launch on VPS</button><button id="vps-stop" data-action="vps-stop" disabled>Stop VPS test</button></div></section>';
   const startup = full ? '<div class="console-start"><span>Next start</span><code>'+escapeHTML(W.startup(s).command || "Startup file required")+'</code><a href="#files">Manage files</a></div>' : "";
   return '<section class="box terminal">'+head("Console",full?'<span class="small-mono">Simulated runtime</span>':'<a href="#console">Open console</a>')+startup+logs(s,full?140:4)+(full?'<form class="cmd" id="command"><input name="cmd" aria-label="Sandbox command" autocomplete="off" placeholder="Type help for commands" required maxlength="120"><button class="accent">Send</button></form>':'')+'</section>';
 }
@@ -244,7 +288,8 @@ function paint() {
   const panels={overview,console:x=>consoleBox(x,true),files,deployments,environment,configuration,backups,activity:x=>'<section class="box">'+head("Activity history")+activities(x,80)+'</section>'};
   $("content").innerHTML=(view==="overview" && s.firstDeploy?onboarding(s):"")+panels[view](s);
   if(view==="overview") draw(s);
-  if(view==="console") $("output").scrollTop=$("output").scrollHeight;
+  if(view==="console" && vpsEnabled) {renderVps();refreshVps();}
+  else if(view==="console") $("output").scrollTop=$("output").scrollHeight;
 }
 
 function editFile(s, path) {
@@ -300,6 +345,8 @@ function act(action,value) {
     flash("Workspace created. Ready for your project files.");return;
   }
   if(!s) return;
+  if(action==="vps-run" || action==="vps-stop") {controlVps(action==="vps-run"?"run":"stop");return;}
+  if(vpsEnabled && action==="deploy") {location.hash="console";return;}
   if(["start","stop","restart","backup"].includes(action) && settingsDirty && !confirm("Discard unsaved configuration changes?")) return;
   switch(action) {
     case "directory": directory=value;filter="";paint();break;
@@ -454,6 +501,7 @@ async function initialize() {
     if(!session.email) { location.replace("./account#login");return; }
     owner="account:"+session.email;
     cloud=session.workspaceStorage==="mongodb";
+    vpsEnabled=session.vpsTest===true;
   }
   storageKey="mzhost:sandbox:v1:"+owner;
   if(cloud) {
@@ -474,6 +522,7 @@ async function initialize() {
   if(owner==="demo" && !location.hash) view="overview";
   paint();
   setInterval(()=>{
+    if(vpsEnabled && view==="console") refreshVps();
     if(view==="overview"&&active()&&!document.hidden&&!$("modal").open){
       const s=active(),tick=Math.floor(Date.now()/5000),values=$("content").querySelectorAll(".stat strong");
       if(values.length){values[0].textContent=sample(s,tick)+" MB";values[1].textContent=(s.started?(2+Math.abs(Math.sin(tick*.4))*2).toFixed(1):0)+"%";draw(s);}

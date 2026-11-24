@@ -11,9 +11,29 @@ async function connect(secure) {
     const workspaces=db.collection("workspaces"), limits=db.collection("auth_attempts");
     const pending=db.collection("email_verifications");
     const audit=db.collection("audit_events");
+    const tests=db.collection("vps_test_worker");
     await Promise.all([sessions,limits,pending,audit].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
     await pending.createIndex({digest:1},{unique:true});
     return accounts({
+      runtime:{
+        get:()=>tests.findOne({_id:"primary"},{projection:{project:0}}),
+        async poll(report,now) {
+          await tests.updateOne({_id:"primary"},{$set:{seen:new Date(now)},$setOnInsert:{desired:"stop",generation:null,state:"idle"}},{upsert:true});
+          if(report.generation===null || (typeof report.generation==="string" && report.generation.length===36)) {
+            await tests.updateOne({_id:"primary",generation:report.generation},{$set:{state:report.state,logs:report.logs}});
+          }
+          return tests.findOne({_id:"primary"});
+        },
+        command(serverId,desired,project,generation) {
+          const filter={_id:"primary",serverId};
+          if(desired==="run") {
+            delete filter.serverId;
+            filter.seen={$gte:new Date(Date.now()-90000)};
+            filter.$or=[{serverId},{desired:"stop",state:{$in:["stopped","idle"]}},{state:{$in:["exited","failed"]}}];
+          }
+          return tests.findOneAndUpdate(filter,{$set:{serverId,desired,project,generation,state:"queued",logs:""}},{returnDocument:"after",projection:{project:0}});
+        }
+      },
       audit:item=>audit.insertOne({...item,expires:new Date(Date.now()+30*86400000)}),
       user:email=>users.findOne({_id:email}),
       session:(token,now)=>sessions.findOne({_id:token,expires:{$gt:new Date(now)}}),

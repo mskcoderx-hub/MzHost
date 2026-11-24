@@ -17,6 +17,6 @@
     ]}
   ],
   "rewrites": [
-    {"source": "/api/:action(session|login|register|verify|logout|workspace)", "destination": "/api/preview?action=:action"}
+    {"source": "/api/:action(session|login|register|verify|logout|workspace|runtime)", "destination": "/api/preview?action=:action"}
   ]
 }

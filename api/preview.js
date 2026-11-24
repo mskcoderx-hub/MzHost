@@ -4,7 +4,7 @@ module.exports=async function handler(req,res) {
   try {
     const url=new URL(req.url,"https://localhost");
     const action=req.query?.action || url.searchParams.get("action") || url.pathname.split("/").pop();
-    if(!["session","login","register","verify","logout","workspace"].includes(action)) return res.status(404).end();
+    if(!["session","login","register","verify","logout","workspace","runtime"].includes(action)) return res.status(404).end();
     const handle=await mongoAccounts();
     await handle(action,req,res);
   } catch(error) {
