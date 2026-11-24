@@ -1,6 +1,11 @@
 const {createHash,randomUUID,timingSafeEqual}=require("node:crypto");
 const digest=value=>createHash("sha256").update(value).digest();
-const runtimeOwner=email=>Boolean(process.env.VPS_TEST_EMAIL && process.env.VPS_WORKER_KEY?.length>=32 && email===process.env.VPS_TEST_EMAIL.trim().toLowerCase());
+function runtimeAccess(email) {
+  const owner=process.env.VPS_TEST_EMAIL?.trim().toLowerCase();
+  if(!owner || !(process.env.VPS_WORKER_KEY?.length>=32)) return "setup_required";
+  return email===owner?"enabled":"private_account";
+}
+const runtimeOwner=email=>runtimeAccess(email)==="enabled";
 const images={Python:{"3.12":"python:3.12-alpine","3.13":"python:3.13-alpine"},"Node.js":{"22":"node:22-alpine","24":"node:24-alpine"}};
 function project(server,entry=server.entry) {
   const image=Object.hasOwn(images,server.runtime) && Object.hasOwn(images[server.runtime],server.version) && images[server.runtime][server.version];
@@ -53,4 +58,4 @@ async function runtimeTest({req,send,readBody,store,email,sameOrigin,now}) {
   const issued=await store.runtime.command(data.serverId,data.action,payload,randomUUID());
   return issued?send(202,status(issued)):send(409,{message:"Check that the worker is online and stop any other active test."});
 }
-module.exports={runtimeTest,runtimeOwner,project};
+module.exports={runtimeTest,runtimeOwner,runtimeAccess,project};

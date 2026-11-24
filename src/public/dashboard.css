@@ -80,6 +80,12 @@ body.studio { background:#f5f5f2; color:#111210; }
 .studio .file-name { border:0; padding:4px 0; background:none; text-align:left; overflow-wrap:anywhere; }
 .studio .file-name:hover { text-decoration:underline; }
 .startup-box { border-left:4px solid var(--yellow); }
+.server-card { display:flex; align-items:center; flex-wrap:wrap; gap:12px 22px; }
+.server-card > div:first-child { flex:1 1 190px; min-width:0; }
+.server-card h2 .file-name { font-size:inherit; line-height:1.2; }
+.server-card .subtle { margin:4px 0 0; }
+.server-card .server-state { font-size:13px; }
+@media(max-width:600px){.server-card .controls{width:100%}}
 .startup-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; max-width:100%; font-size:14px; font-weight:600; }
 .startup-picker select { min-height:38px; max-width:100%; padding:6px 10px; border-radius:5px; border:1px solid #bdbeb5; background:white; color:#171813; }
 .startup-box code,.console-start code { overflow-wrap:anywhere; font:600 15px/1.45 var(--mono); }

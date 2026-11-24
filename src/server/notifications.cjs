@@ -2,8 +2,19 @@ const {randomUUID,createHmac}=require("node:crypto");
 const fs=require("node:fs/promises");
 const path=require("node:path");
 
-async function record(group,event,email,persist) {
+const alerts={
+  "preview.server_created":["Server created"],
+  "preview.server_removed":["Server deleted"],
+  "account.created":["Account created","The user verified their email and set a password."],
+  "auth.rate_limited":["Sign-in traffic limited","The request limit for one network address was reached."],
+  "account.login_rate_limited":["Repeated sign-in attempts blocked","The account reached its sign-in attempt limit."],
+  "email.configuration_missing":["Verification email unavailable","Check the sender, site origin and email provider settings."],
+  "email.send_failed":["Verification email failed","Check the email provider status and sending domain."],
+  "email.volume_limit":["Verification email limit reached","New verification emails must wait until sending capacity resets."]
+};
+async function record(group,event,email,persist,servers) {
   const item={id:randomUUID(),time:new Date().toISOString(),group,event};
+  if(servers?.length) item.servers=servers.filter(name=>typeof name==="string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(name)).slice(0,5);
   if(email && process.env.AUDIT_KEY) item.account=createHmac("sha256",process.env.AUDIT_KEY).update(email).digest("hex").slice(0,20);
   console.info(JSON.stringify(item));
   if(persist) {
@@ -11,13 +22,14 @@ async function record(group,event,email,persist) {
     catch {console.warn(JSON.stringify({event:"audit.storage_unavailable",id:item.id}));}
   }
   const target=process.env["DISCORD_"+group.toUpperCase()+"_WEBHOOK"];
-  if(!target) return;
+  const alert=alerts[event];
+  if(!target || !alert) return;
   try {
     const url=new URL(target);
     if(url.origin!=="https://discord.com" || !/^\/api\/webhooks\/\d+\/[\w-]+$/.test(url.pathname)) throw Error();
     const response=await fetch(url,{method:"POST",redirect:"error",signal:AbortSignal.timeout(1800),
       headers:{"Content-Type":"application/json"},body:JSON.stringify({allowed_mentions:{parse:[]},
-        embeds:[{title:event,color:0xffd23f,description:item.account?"Account · "+item.account:undefined,timestamp:item.time,footer:{text:"MzHost / "+group+" / "+item.id}}]})});
+        embeds:[{title:alert[0],color:0xffd23f,description:item.servers?.join(", ") || alert[1],timestamp:item.time,footer:{text:item.account?"MzHost / Account "+item.account:"MzHost / "+group}}]})});
     if(!response.ok) throw Error();
   } catch { console.warn(JSON.stringify({event:"discord.notification_failed",group,id:item.id})); }
 }

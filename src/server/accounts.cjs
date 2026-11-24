@@ -1,6 +1,6 @@
 const { randomBytes, scrypt, createHash, timingSafeEqual } = require("node:crypto");
 const {record:writeEvent,mailSettings,sendVerification}=require("./notifications.cjs");
-const {runtimeOwner,runtimeTest}=require("./runtime-test.cjs");
+const {runtimeAccess,runtimeTest}=require("./runtime-test.cjs");
 const derive = require("node:util").promisify(scrypt);
 const week = 7 * 24 * 60 * 60;
 const digest = value => createHash("sha256").update(value).digest("hex");
@@ -41,7 +41,7 @@ async function readBody(req,limit) {
   catch {throw Object.assign(Error("Invalid JSON."),{status:400});}
 }
 module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
-  const record=(group,event,email)=>writeEvent(group,event,email,store.audit);
+  const record=(group,event,email,servers)=>writeEvent(group,event,email,store.audit,servers);
   const dummySalt=randomBytes(16).toString("hex");
   return async function handle(action, req, res) {
     function send(status, data) {
@@ -74,12 +74,13 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
         }
         if(ids.size ? !ids.has(workspace.selected) : workspace.selected!=="") return send(400,{message:"Invalid server selection."});
         const saved=await store.save(email,revision,workspace);
-        await record("workspace",saved?"workspace.saved":"workspace.revision_conflict",email);
-        if(saved?.added) await record("workspace","preview.server_created",email);
-        if(saved?.removed) await record("workspace","preview.server_removed",email);
+        if(!saved) await record("workspace","workspace.revision_conflict",email);
+        if(saved?.added?.length) await record("workspace","preview.server_created",email,saved.added);
+        if(saved?.removed?.length) await record("workspace","preview.server_removed",email,saved.removed);
         return send(saved?200:409,saved?{revision:revision+1}:{message:"Workspace changed."});
       }
-      return send(200,{email,workspaceStorage:store.workspace?"mongodb":"tab",vpsTest:Boolean(store.runtime && runtimeOwner(email))});
+      const access=email && (store.runtime?runtimeAccess(email):"storage_required");
+      return send(200,{email,workspaceStorage:store.workspace?"mongodb":"tab",vpsTest:access==="enabled",runtimeAccess:access});
     }
     if (!["login","register","verify","logout"].includes(action)) return send(404, {});
     if (req.method !== "POST") return send(405, {});

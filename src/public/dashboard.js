@@ -17,6 +17,25 @@ let draft, reviewing=false;
 let cloud=false, revision=0, acknowledged, syncing=false, conflict=false;
 let vpsEnabled=false, vpsStatus=null, vpsPending=false, vpsReading=false;
 let signedIn=false, terminalRevision=0;
+let accessReason="",accountEmail="",statusReadFailed=false;
+
+function serverStatus(s) {
+  if(!signedIn) return s.started?"Running (preview)":s.files.length?"Stopped (preview)":"Waiting for files";
+  if(!vpsEnabled) return accessReason==="private_account"?"Private hosting":"Hosting setup needed";
+  if(!vpsStatus) return statusReadFailed?"Status unavailable":"Checking VPS";
+  if(!vpsStatus.online) return "Worker offline";
+  if(vpsStatus.serverId===s.id) return label(vpsStatus.state);
+  return s.files.length?"Stopped":"Waiting for files";
+}
+function renderServerStatuses() {
+  for(const badge of document.querySelectorAll("[data-server-status]")) {
+    const server=state.servers.find(s=>s.id===badge.dataset.serverStatus);
+    if(!server) continue;
+    const text=serverStatus(server);
+    badge.textContent=text;
+    badge.classList.toggle("online",text==="Running" || text==="Running (preview)");
+  }
+}
 
 function renderVps() {
   if(!$("vps-state")) return;
@@ -42,22 +61,20 @@ function renderVps() {
   $("vps-run").disabled=vpsPending || !remote?.online || busy || !W.startup(s).selected || syncedChangesPending();
   $("vps-stop").disabled=vpsPending || !remote?.online || !remote.serverId || !busy;
   $("vps-stop").textContent=occupied?"Stop other test":"Stop";
-  const status=$("context").querySelector(".server-state");
-  status.textContent=!remote?"Checking VPS":!remote.online?"Worker offline":same?label(remote.state):"Stopped";
-  status.classList.toggle("online",Boolean(remote?.online && same && remote.state==="running"));
+  renderServerStatuses();
 }
 function syncedChangesPending() {return syncing || acknowledged!==state || conflict;}
 async function refreshVps() {
-  if(!vpsEnabled || view!=="console" || vpsReading || vpsPending || document.hidden) return;
+  if(!vpsEnabled || view==="setup" || !state?.servers.length || vpsReading || vpsPending || document.hidden) return;
   vpsReading=true;
   const revisionAtRead=terminalRevision;
   try {
     const response=await fetch("/api/runtime",{cache:"no-store"});
     if(!response.ok) throw Error();
     const result=await response.json();
-    if(revisionAtRead===terminalRevision) vpsStatus=result;
-  } catch {if(revisionAtRead===terminalRevision) vpsStatus=null;}
-  finally {vpsReading=false;renderVps();}
+    if(revisionAtRead===terminalRevision) {vpsStatus=result;statusReadFailed=false;}
+  } catch {if(revisionAtRead===terminalRevision) {vpsStatus=null;statusReadFailed=true;}}
+  finally {vpsReading=false;if(view==="console") renderVps();else renderServerStatuses();}
 }
 async function controlVps(action,details={}) {
   if(vpsPending || !active()) return;
@@ -170,7 +187,7 @@ function controls(s) {
     if(vpsEnabled) return '<div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Start</button><button id="vps-stop" data-action="vps-stop" disabled>Stop</button></div>';
     return '<div class="controls"><button data-action="start" class="accent" '+(s.started || !W.startup(s).selected?'disabled':'')+'>Start</button><button data-action="stop" '+(s.started?'':'disabled')+'>Stop</button>'+(s.started?button("Restart","restart"):"")+'</div>';
   }
-  if(vpsEnabled) return '<div class="controls"><a href="#console">Open VPS console</a></div>';
+  if(signedIn) return '<div class="controls"><a href="#console">Open console</a></div>';
   if (s.firstDeploy && !s.started) return '<div class="controls"><a href="#files">Open files</a></div>';
   return '<div class="controls">'+(s.started ? button("Restart","restart","","")+button("Stop server","stop","","") : button("Start server","start","","accent"))+'</div>';
 }
@@ -196,7 +213,7 @@ function startupPicker(s) {
 function consoleBox(s, full) {
   const startup = full ? '<div class="console-start">'+startupPicker(s)+'<a href="#files">Manage files</a></div>' : "";
   if(full && signedIn && !vpsEnabled) return '<section class="box terminal">'+head("Project terminal")+
-    startup+'<p>VPS access is disabled for this account. Sign in with the verified email configured as VPS_TEST_EMAIL on the production deployment to run your files.</p></section>';
+    startup+'<p>'+escapeHTML(accessReason==="private_account"?"Signed in as "+accountEmail+". Only the designated test account can run projects on this VPS. To test this workspace, set VPS_TEST_EMAIL to this email and redeploy.":accessReason==="storage_required"?"This deployment needs MongoDB workspace storage before it can connect to the VPS.":"The private VPS connection needs configuration. Check VPS_TEST_EMAIL and VPS_WORKER_KEY in the deployment settings.")+'</p></section>';
   if(vpsEnabled && full) return '<section class="box terminal">'+head("Project terminal",'<span id="vps-state" role="status"></span>')+
     startup+'<pre id="vps-output" class="log-output" aria-label="Project output"></pre>'+
     '<form class="cmd" id="vps-command"><label for="vps-line" id="terminal-label">Run a file</label><input id="vps-line" name="line" autocomplete="off" spellcheck="false" maxlength="512" disabled><button id="terminal-send" class="accent" disabled>Send</button></form><p id="terminal-hint" role="status"></p></section>';
@@ -211,6 +228,9 @@ function sample(s, tick) {
   return Math.round(base+8*Math.sin(tick*.54)+5*Math.sin(tick*.17));
 }
 function overview(s) {
+  if(signedIn) return '<section class="box">'+head("Project files",'<a href="#files">Manage files</a>')+
+    '<p>'+s.files.length+' saved · '+(s.entry?'Startup file <code>'+escapeHTML(s.entry)+'</code>':'Choose a startup file in Files')+'</p></section>'+
+    '<section class="box">'+head("Recent activity",'<a href="#activity">View all</a>')+activities(s,4)+'</section>';
   const tick=Math.floor(Date.now()/5000), memory=sample(s,tick);
   const stat=(key,value,unit)=>'<div class="stat"><span class="key">'+key+'</span><strong>'+value+'</strong><small>'+unit+'</small></div>';
   return '<div class="cards">'+stat("Memory",memory+' MB','of '+s.memory+' MB')+stat("CPU usage",s.started?(2+Math.abs(Math.sin(tick*.4))*2).toFixed(1)+'%':'0%','simulated')+stat("Project files",s.files.length,size(s.files.reduce((n,f)=>n+used(f),0))+' in use')+'</div>'+
@@ -286,8 +306,8 @@ function deployments(s) {
   return '<section class="box">'+head("Release history",button("Deploy current files","deploy","","accent"))+'<p class="subtle">Test a release from the current files and entry point. The last three releases are available to redeploy.</p><div class="list">'+(rows||'<p class="empty">No releases yet.</p>')+'</div></section>';
 }
 function fleet() {
-  const rows=state.servers.map(s=>'<div class="file-row">'+button(s.name,"select-server",s.id,"file-name")+'<span class="small-mono">'+s.runtime+' · '+s.memory+' MB</span><div class="group-end">'+(s.started?"Running":s.firstDeploy && !s.files.length?"Waiting for files":"Stopped")+'</div></div>').join("");
-  return '<section class="box">'+head("Servers ("+state.servers.length+"/"+W.serverLimit+")",button("New server","create-server","","accent"))+rows+'</section>';
+  return state.servers.map(s=>'<article class="box server-card"><div><h2>'+button(s.name,"select-server",s.id,"file-name")+'</h2><p class="subtle">'+escapeHTML([s.runtime,s.version].filter(Boolean).join(" "))+' · '+s.files.length+' '+(s.files.length===1?"file":"files")+'</p></div>'+
+    '<span class="server-state" data-server-status="'+escapeHTML(s.id)+'"></span><div class="controls">'+button("Files","server-files",s.id)+button("Open console","server-console",s.id,"accent")+'</div></article>').join("");
 }
 function setupPage() {
   draft ??= {name:"",runtime:"Python",version:W.versions.Python[0],plan:"Starter",database:"No database"};
@@ -311,6 +331,11 @@ function planHint(p) {
   return p.memory+" MB memory · "+p.disk+" GB disk · "+p.cpu+" vCPU · $"+p.price+"/month proposed. Free to preview.";
 }
 function onboarding(s) {
+  if(signedIn) {
+    if(!s.files.length) return '<section class="box launch-guide">'+head("Upload your project",'<a href="#files">Open files</a>')+'<p>Upload your bot or app in Files, then choose which file runs first.</p></section>';
+    if(!W.startup(s).selected) return '<section class="box launch-guide">'+head("Choose your startup file",'<a href="#files">Choose file</a>')+'<p>Select the file that starts your project.</p></section>';
+    return "";
+  }
   const manifest=W.runtimes[s.runtime].manifest, hasManifest=s.files.some(f=>f.path===manifest);
   const step=(title,detail,action)=>'<li><div><strong>'+title+'</strong><p class="subtle">'+detail+'</p></div>'+action+'</li>';
   return '<section class="box launch-guide">'+head("First deployment")+'<p class="subtle">'+escapeHTML(s.runtime+" "+s.version+" / "+s.plan+" / "+s.database)+'</p><ol>'+
@@ -334,21 +359,19 @@ function paint() {
   if (!s) { document.title="My servers | MzHost"; $("context").innerHTML='<h1>My servers<span class="period">.</span></h1>'; $("content").innerHTML='<section class="box setup-card">'+head("Create your first server")+'<p class="subtle">Choose a runtime and plan, then upload your project.</p>'+button("New server","create-server","","accent")+'</section>';return; }
   if (view==="servers") {
     document.title="My servers | MzHost";
-    $("context").innerHTML='<p class="crumb">Workspace</p><div class="context-row"><div><h1>My servers<span class="period">.</span></h1><p class="subtle">'+state.servers.filter(item=>item.started).length+' running of '+state.servers.length+' servers</p></div></div>';
-    $("content").innerHTML=fleet();return;
+    $("context").innerHTML='<div class="context-row"><div><h1>My servers<span class="period">.</span></h1><p class="subtle">'+state.servers.length+' of '+W.serverLimit+' server slots used</p></div>'+button("New server","create-server","","accent")+'</div>';
+    $("content").innerHTML=fleet();renderServerStatuses();refreshVps();return;
   }
   document.title=label(view)+" · "+s.name+" | MzHost";
   $("context").innerHTML='<p class="crumb">Workspace / '+escapeHTML(s.name)+' / '+label(view)+'</p><div class="context-row"><div><h1>'+escapeHTML(view==="overview"?s.name:label(view))+'<span class="period">.</span></h1><p class="subtle"><span class="server-state '+(s.started?"online":"")+'">'+(s.started?"Running":s.firstDeploy && !s.files.length?"Waiting for files":"Stopped")+'</span> &nbsp; / &nbsp; '+escapeHTML([s.runtime,s.version].filter(Boolean).join(' '))+' &nbsp; / &nbsp; '+escapeHTML(s.entry || 'Awaiting startup file')+'</p></div>'+controls(s)+'</div>';
   const panels={overview,console:x=>consoleBox(x,true),files,deployments,environment,configuration,backups,activity:x=>'<section class="box">'+head("Activity history")+activities(x,80)+'</section>'};
   $("content").innerHTML=(view==="overview" && s.firstDeploy?onboarding(s):"")+panels[view](s);
-  if(view==="console" && signedIn && !vpsEnabled) {
-    const status=$("context").querySelector(".server-state");
-    status.textContent="VPS unavailable";
-    status.classList.remove("online");
-  }
+  $("context").querySelector(".server-state").dataset.serverStatus=s.id;
+  renderServerStatuses();
   if(view==="overview") draw(s);
   if(view==="console" && vpsEnabled) {renderVps();refreshVps();}
   else if(view==="console" && $("output")) $("output").scrollTop=$("output").scrollHeight;
+  else if(vpsEnabled && !vpsStatus) refreshVps();
 }
 
 function editFile(s, path) {
@@ -413,7 +436,10 @@ function act(action,value) {
       if (!W.runnable(s.runtime,f)) throw Error("Choose a runnable file for this server.");
       commit(server=>{server.entry=value;W.event(server,"Set startup file to "+value);});
       flash(s.started?"Startup file saved. Restart to use it.":"Startup file saved.");break;
-    case "select-server": directory="";filter="";commit((_,next)=>next.selected=value);location.hash="overview";break;
+    case "select-server": case "server-files": case "server-console":
+      directory="";filter="";
+      if(state.selected!==value) commit((_,next)=>next.selected=value);
+      location.hash=action==="server-console"?"console":action==="server-files"?"files":"overview";break;
     case "deploy":
       showModal("Deploy current files",field("Release name","release","","required maxlength=\"80\" placeholder=\"First release\""),"Deploy",data=>{commit(server=>W.deploy(server,data.get("release")));location.hash="console";});break;
     case "redeploy": confirmAction("Redeploy release?","This replaces your working files, runtime and entry point with this release and starts the server.","Redeploy",server=>W.redeploy(server,value));break;
@@ -569,6 +595,8 @@ async function initialize() {
     signedIn=true;
     cloud=session.workspaceStorage==="mongodb";
     vpsEnabled=session.vpsTest===true;
+    accessReason=session.runtimeAccess;
+    accountEmail=session.email;
     if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project on the private VPS.";
   }
   storageKey="mzhost:sandbox:v1:"+owner;
@@ -590,7 +618,7 @@ async function initialize() {
   if(owner==="demo" && !location.hash) view="overview";
   paint();
   setInterval(()=>{
-    if(vpsEnabled && view==="console") refreshVps();
+    if(vpsEnabled) refreshVps();
     if(view==="overview"&&active()&&!document.hidden&&!$("modal").open){
       const s=active(),tick=Math.floor(Date.now()/5000),values=$("content").querySelectorAll(".stat strong");
       if(values.length){values[0].textContent=sample(s,tick)+" MB";values[1].textContent=(s.started?(2+Math.abs(Math.sin(tick*.4))*2).toFixed(1):0)+"%";draw(s);}

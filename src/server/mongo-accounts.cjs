@@ -86,11 +86,12 @@ async function connect(secure) {
       async save(email,revision,workspace) {
         try {
           const previous=await workspaces.findOneAndUpdate({_id:email,revision},{$set:{workspace},$inc:{revision:1}},
-            {upsert:revision===0,returnDocument:"before",projection:{"workspace.servers.id":1}});
+              {upsert:revision===0,returnDocument:"before",projection:{"workspace.servers.id":1,"workspace.servers.name":1}});
           if(!previous && revision!==0) return false;
-          const before=new Set((previous?.workspace?.servers || []).map(s=>s.id));
-          const after=new Set(workspace.servers.map(s=>s.id));
-          return {added:[...after].filter(id=>!before.has(id)).length,removed:[...before].filter(id=>!after.has(id)).length};
+            const before=previous?.workspace?.servers || [];
+            const after=workspace.servers;
+            const changed=(from,to)=>from.filter(s=>!to.some(other=>other.id===s.id)).map(s=>s.name);
+            return {added:changed(after,before),removed:changed(before,after)};
         } catch(error) {if(error.code===11000) return false;throw error;}
       }
     },{secure});
