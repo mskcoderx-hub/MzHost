@@ -75,6 +75,8 @@ body.studio { background:#f5f5f2; color:#111210; }
 .studio .file-name { border:0; padding:4px 0; background:none; text-align:left; overflow-wrap:anywhere; }
 .studio .file-name:hover { text-decoration:underline; }
 .startup-box { border-left:4px solid var(--yellow); }
+.startup-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; max-width:100%; font-size:14px; font-weight:600; }
+.startup-picker select { min-height:38px; max-width:100%; padding:6px 10px; border-radius:5px; border:1px solid #bdbeb5; background:white; color:#171813; }
 .startup-box code,.console-start code { overflow-wrap:anywhere; font:600 15px/1.45 var(--mono); }
 .startup-box .file-tools { justify-content:space-between; }
 .suggest-file,.console-start,.file-crumbs { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }

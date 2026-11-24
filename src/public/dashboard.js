@@ -21,12 +21,16 @@ function renderVps() {
   if(!$("vps-state")) return;
   const s=active(), remote=vpsStatus;
   const same=remote?.serverId===s?.id;
-  const occupied=remote?.serverId && !same && !["idle","stopped","exited","failed"].includes(remote.state);
+  const busy=remote && ["starting","queued","running"].includes(remote.state);
+  const occupied=remote?.serverId && !same && busy;
   $("vps-state").textContent=!remote?"Checking worker connection…":!remote.online?"Worker offline":occupied?"Another project is using the test worker":same?"Worker online / "+remote.state:"Worker online / ready";
   $("vps-output").textContent=same && remote.logs ? remote.logs : "Awaiting process output.";
-  $("vps-run").disabled=vpsPending || !remote?.online || occupied || !W.startup(s).selected || syncedChangesPending();
-  $("vps-stop").disabled=vpsPending || !remote?.serverId || !remote.online || ["idle","stopped"].includes(remote.state);
-  $("vps-stop").textContent=occupied?"Stop other test":"Stop VPS test";
+  $("vps-run").disabled=vpsPending || !remote?.online || busy || !W.startup(s).selected || syncedChangesPending();
+  $("vps-stop").disabled=vpsPending || !remote?.online || !remote.serverId || !busy;
+  $("vps-stop").textContent=occupied?"Stop other test":"Stop";
+  const status=$("context").querySelector(".server-state");
+  status.textContent=!remote?"Checking VPS":!remote.online?"Worker offline":same?label(remote.state):"Stopped";
+  status.classList.toggle("online",Boolean(remote?.online && same && remote.state==="running"));
 }
 function syncedChangesPending() {return syncing || acknowledged!==state || conflict;}
 async function refreshVps() {
@@ -122,7 +126,10 @@ function head(title, right="") {
   return '<div class="panel-head"><h2>'+title+'</h2>'+right+'</div>';
 }
 function controls(s) {
-  if(vpsEnabled && view==="console") return "";
+  if(view==="console") {
+    if(vpsEnabled) return '<div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Start</button><button id="vps-stop" data-action="vps-stop" disabled>Stop</button></div>';
+    return '<div class="controls"><button data-action="start" class="accent" '+(s.started || !W.startup(s).selected?'disabled':'')+'>Start</button><button data-action="stop" '+(s.started?'':'disabled')+'>Stop</button>'+(s.started?button("Restart","restart"):"")+'</div>';
+  }
   if(vpsEnabled) return '<div class="controls"><a href="#console">Open VPS console</a></div>';
   if (s.firstDeploy && !s.started) return '<div class="controls"><a href="#files">Open files</a></div>';
   return '<div class="controls">'+(s.started ? button("Restart","restart","","")+button("Stop server","stop","","") : button("Start server","start","","accent"))+'</div>';
@@ -141,12 +148,16 @@ function runControl(operation) {
 function logs(s, limit) {
   return '<div class="log-output" id="output">'+s.logs.slice(-limit).map(l=>'<div class="log-line"><time>'+time(l.time)+'</time><span>'+escapeHTML(l.message)+'</span></div>').join("")+(s.logs.length?"":'<p>Start the server to see its logs.</p>')+'</div>';
 }
+function startupPicker(s) {
+  const {selected,candidates}=W.startup(s);
+  if(!candidates.length) return '<span>Add a '+(s.runtime==="Python"?".py":".js, .cjs or .mjs")+' file in Files to choose what runs first.</span>';
+  return '<label class="startup-picker">Startup file <select id="startup-file">'+(selected?"":'<option value="" selected disabled>Choose a file</option>')+options(candidates.map(f=>f.path),selected?.path)+'</select></label>';
+}
 function consoleBox(s, full) {
+  const startup = full ? '<div class="console-start">'+startupPicker(s)+'<a href="#files">Manage files</a></div>' : "";
   if(vpsEnabled && full) return '<section class="box terminal">'+head("Private VPS test",'<span id="vps-state" role="status"></span>')+
     '<p>Run your saved project with the standard library. This test has 128 MB RAM, read-only project files and no network access.</p>'+
-    '<div class="console-start"><code>'+escapeHTML(W.startup(s).command || "Choose a startup file")+'</code><a href="#files">Manage files</a></div>'+
-    '<pre id="vps-output" class="log-output" aria-label="VPS process output"></pre><div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Launch on VPS</button><button id="vps-stop" data-action="vps-stop" disabled>Stop VPS test</button></div></section>';
-  const startup = full ? '<div class="console-start"><span>Next start</span><code>'+escapeHTML(W.startup(s).command || "Startup file required")+'</code><a href="#files">Manage files</a></div>' : "";
+    startup+'<pre id="vps-output" class="log-output" aria-label="VPS process output"></pre></section>';
   return '<section class="box terminal">'+head("Console",full?'<span class="small-mono">Simulated runtime</span>':'<a href="#console">Open console</a>')+startup+logs(s,full?140:4)+(full?'<form class="cmd" id="command"><input name="cmd" aria-label="Sandbox command" autocomplete="off" placeholder="Type help for commands" required maxlength="120"><button class="accent">Send</button></form>':'')+'</section>';
 }
 function activities(s, limit) {
@@ -192,8 +203,9 @@ function fileRows(s) {
   rows.sort((a,b)=>Number(b.path===s.entry)-Number(a.path===s.entry)||a.path.localeCompare(b.path));
   for (const f of rows) {
     const entry=f.path===s.entry && W.runnable(s.runtime,f);
-    const start=entry ? '<span class="entry-tag">Runs first</span>' : W.runnable(s.runtime,f) ? button("Set as startup","set-entry",f.path) : "";
-    folders.push('<div class="file-row">'+button(query?f.path:f.path.slice(directory.length),"open-file",f.path,"file-name")+'<span class="small-mono">'+size(used(f))+'</span><div class="group-end">'+start+'<details class="file-menu"><summary aria-label="Actions for '+escapeHTML(f.path)+'">Actions</summary><div>'+button("Rename","rename-file",f.path)+button("Download","download",f.path)+button("Delete","delete-file",f.path,"small-btn danger")+'</div></details></div></div>');
+    const setStartup=W.runnable(s.runtime,f) && !entry ? button("Set as startup","set-entry",f.path) : "";
+    const start=entry ? '<span class="entry-tag">Runs first</span>' : setStartup;
+    folders.push('<div class="file-row">'+button(query?f.path:f.path.slice(directory.length),"open-file",f.path,"file-name")+'<span class="small-mono">'+size(used(f))+'</span><div class="group-end">'+start+'<details class="file-menu"><summary aria-label="Actions for '+escapeHTML(f.path)+'">Actions</summary><div>'+(entry?'<button disabled>Current startup file</button>':setStartup)+button("Rename","rename-file",f.path)+button("Download","download",f.path)+button("Delete","delete-file",f.path,"small-btn danger")+'</div></details></div></div>');
   }
   return folders.join("") || '<p class="empty">'+(s.files.length?"No matching files.":"Your project is empty. Upload a folder or create your first file.")+'</p>';
 }
@@ -205,7 +217,7 @@ function files(s) {
   let prefix="";
   const crumbs=[button("Project root","directory","","file-name")];
   for(const part of directory.split("/").filter(Boolean)) {prefix+=part+"/";crumbs.push(button(part,"directory",prefix,"file-name"));}
-  const entry=launch.selected ? '<code>'+escapeHTML(launch.command)+'</code>'+button("Edit startup file","open-file",s.entry) : '<p>Choose a '+(s.runtime==="Python"?".py":".js, .mjs or .cjs")+' file to run first.</p>';
+  const entry=startupPicker(s)+(launch.selected ? '<code>'+escapeHTML(launch.command)+'</code>'+button("Edit startup file","open-file",s.entry) : '');
   return '<section class="box startup-box">'+head("Startup file",'<a href="#console">Open console</a>')+'<div class="file-tools">'+entry+'</div>'+suggestion+'</section>'+
     '<section class="box file-browser">'+head("Project files")+'<div class="file-tools"><input id="file-search" class="file-search" aria-label="Search all file paths" placeholder="Search all files" value="'+escapeHTML(filter)+'">'+button("Upload files","upload","","accent")+button("Upload folder","upload-folder","","")+button("New file","new-file","","")+'</div><nav class="file-crumbs" aria-label="Folder path">'+crumbs.join('<span>/</span>')+'</nav><div class="list" id="file-list">'+fileRows(s)+'</div></section>';
 }
@@ -401,6 +413,11 @@ document.addEventListener("input",e=>{
   if(e.target.id==="env-reveal") $("modal-form").elements.value.type=e.target.checked?"text":"password";
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="startup-file") {
+    try { act("set-entry",e.target.value); $("startup-file")?.focus(); }
+    catch(error) { paint();flash(error.message); }
+    return;
+  }
   if(e.target.form?.id==="setup") {
     const form=e.target.form;
     if(e.target.name==="runtime") form.elements.version.innerHTML=options(W.versions[e.target.value],W.versions[e.target.value][0]);
@@ -502,6 +519,7 @@ async function initialize() {
     owner="account:"+session.email;
     cloud=session.workspaceStorage==="mongodb";
     vpsEnabled=session.vpsTest===true;
+    if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project on the private VPS.";
   }
   storageKey="mzhost:sandbox:v1:"+owner;
   if(cloud) {
