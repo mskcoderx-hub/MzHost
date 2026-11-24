@@ -58,6 +58,11 @@ body.studio { background:#f5f5f2; color:#111210; }
 .log-line time { color:#a8aa9e; }
 .log-line span { overflow-wrap:anywhere; white-space:pre-wrap; }
 .cmd { display:flex; gap:8px; margin-top:17px; }
+#vps-command { align-items:center; flex-wrap:wrap; }
+#vps-command label { font:13px var(--mono); }
+#vps-command input { min-width:min(160px,100%); }
+#vps-output { white-space:pre-wrap; overflow-wrap:anywhere; }
+#terminal-hint:empty { display:none; }
 .cmd input { flex:1; min-width:0; background:#252620; color:white; border-color:#606159; font:14px var(--mono); }
 .event-row { justify-content:space-between; padding:12px 0; border-top:1px solid #ecece6; font-size:14px; overflow-wrap:anywhere; }
 .event-row time { flex:none; }

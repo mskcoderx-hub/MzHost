@@ -16,6 +16,7 @@ let view = routes.includes(location.hash.slice(1)) ? location.hash.slice(1) : "s
 let draft, reviewing=false;
 let cloud=false, revision=0, acknowledged, syncing=false, conflict=false;
 let vpsEnabled=false, vpsStatus=null, vpsPending=false, vpsReading=false;
+let signedIn=false, terminalRevision=0;
 
 function renderVps() {
   if(!$("vps-state")) return;
@@ -24,7 +25,20 @@ function renderVps() {
   const busy=remote && ["starting","queued","running"].includes(remote.state);
   const occupied=remote?.serverId && !same && busy;
   $("vps-state").textContent=!remote?"Checking worker connection…":!remote.online?"Worker offline":occupied?"Another project is using the test worker":same?"Worker online / "+remote.state:"Worker online / ready";
-  $("vps-output").textContent=same && remote.logs ? remote.logs : "Awaiting process output.";
+  const output=$("vps-output");
+  const follow=output.scrollHeight-output.scrollTop-output.clientHeight<24;
+  const text=same && remote.logs ? remote.logs : "Awaiting process output.";
+  if(output.textContent!==text) {
+    output.textContent=text;
+    if(follow) output.scrollTop=output.scrollHeight;
+  }
+  const running=same && remote.state==="running";
+  const prompt=$("vps-command").elements.line;
+  prompt.disabled=!remote?.online || occupied || (busy && !running) || (running && !remote.interactive);
+  $("terminal-send").disabled=prompt.disabled || vpsPending || (running && remote.inputPending);
+  $("terminal-label").textContent=running?"Process input":"Run a file";
+  prompt.placeholder=running?"Type a line for the running program":s.runtime==="Python"?"run or python test.py":"run or node index.js";
+  $("terminal-hint").textContent=running && !remote.interactive?"Update the VPS worker to enable process input.":same && remote.inputFailed?"The last input could not be delivered.":same && remote.inputPending?"Sending input…":"";
   $("vps-run").disabled=vpsPending || !remote?.online || busy || !W.startup(s).selected || syncedChangesPending();
   $("vps-stop").disabled=vpsPending || !remote?.online || !remote.serverId || !busy;
   $("vps-stop").textContent=occupied?"Stop other test":"Stop";
@@ -36,26 +50,51 @@ function syncedChangesPending() {return syncing || acknowledged!==state || confl
 async function refreshVps() {
   if(!vpsEnabled || view!=="console" || vpsReading || vpsPending || document.hidden) return;
   vpsReading=true;
+  const revisionAtRead=terminalRevision;
   try {
     const response=await fetch("/api/runtime",{cache:"no-store"});
     if(!response.ok) throw Error();
-    vpsStatus=await response.json();
-  } catch {vpsStatus=null;}
+    const result=await response.json();
+    if(revisionAtRead===terminalRevision) vpsStatus=result;
+  } catch {if(revisionAtRead===terminalRevision) vpsStatus=null;}
   finally {vpsReading=false;renderVps();}
 }
-async function controlVps(action) {
+async function controlVps(action,details={}) {
   if(vpsPending || !active()) return;
   if(action==="run" && syncedChangesPending()) {flash("Wait for the workspace to finish saving.");return;}
   if(action==="stop" && vpsStatus?.serverId!==active().id && !confirm("Stop the other project on the private VPS worker?")) return;
+  terminalRevision++;
   vpsPending=true;renderVps();
   try {
     const response=await fetch("/api/runtime",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({action,serverId:action==="stop"?vpsStatus?.serverId:active().id,revision})});
+      body:JSON.stringify({action,serverId:action==="stop"?vpsStatus?.serverId:active().id,revision,...details})});
     const result=await response.json();
     if(!response.ok) throw Error(result.message || "VPS request failed.");
     vpsStatus=result;
+    return true;
   } catch(error){flash(error.message);}
   finally {vpsPending=false;renderVps();}
+}
+async function submitTerminal(form) {
+  const s=active(), prompt=form.elements.line, line=prompt.value;
+  if($("terminal-send").disabled) return;
+  let accepted;
+  if(vpsStatus?.serverId===s.id && vpsStatus.state==="running") {
+    accepted=await controlVps("input",{line,generation:vpsStatus.generation});
+  } else {
+    const command=line.trim();
+    let entry=s.entry;
+    if(command!=="run" && command!=="start") {
+      const match=/^(python3?|node)\s+(?:"([^"]+)"|'([^']+)'|(.+))$/.exec(command);
+      if(!match || (match[1]==="node")!==(s.runtime==="Node.js")) {
+        flash("Type run, or enter a "+s.runtime+" command with a saved file path.");return;
+      }
+      entry=(match[2]||match[3]||match[4]).replace(/^\.\//,"");
+    }
+    if(!W.startup(s).candidates.some(f=>f.path===entry)) {flash("Choose a runnable file saved in this project.");return;}
+    accepted=await controlVps("run",{entry});
+  }
+  if(accepted && form.isConnected && prompt.value===line) {prompt.value="";prompt.focus();}
 }
 
 async function saveCloud() {
@@ -127,6 +166,7 @@ function head(title, right="") {
 }
 function controls(s) {
   if(view==="console") {
+    if(signedIn && !vpsEnabled) return "";
     if(vpsEnabled) return '<div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Start</button><button id="vps-stop" data-action="vps-stop" disabled>Stop</button></div>';
     return '<div class="controls"><button data-action="start" class="accent" '+(s.started || !W.startup(s).selected?'disabled':'')+'>Start</button><button data-action="stop" '+(s.started?'':'disabled')+'>Stop</button>'+(s.started?button("Restart","restart"):"")+'</div>';
   }
@@ -155,9 +195,11 @@ function startupPicker(s) {
 }
 function consoleBox(s, full) {
   const startup = full ? '<div class="console-start">'+startupPicker(s)+'<a href="#files">Manage files</a></div>' : "";
-  if(vpsEnabled && full) return '<section class="box terminal">'+head("Private VPS test",'<span id="vps-state" role="status"></span>')+
-    '<p>Run your saved project with the standard library. This test has 128 MB RAM, read-only project files and no network access.</p>'+
-    startup+'<pre id="vps-output" class="log-output" aria-label="VPS process output"></pre></section>';
+  if(full && signedIn && !vpsEnabled) return '<section class="box terminal">'+head("Project terminal")+
+    startup+'<p>VPS access is disabled for this account. Sign in with the verified email configured as VPS_TEST_EMAIL on the production deployment to run your files.</p></section>';
+  if(vpsEnabled && full) return '<section class="box terminal">'+head("Project terminal",'<span id="vps-state" role="status"></span>')+
+    startup+'<pre id="vps-output" class="log-output" aria-label="Project output"></pre>'+
+    '<form class="cmd" id="vps-command"><label for="vps-line" id="terminal-label">Run a file</label><input id="vps-line" name="line" autocomplete="off" spellcheck="false" maxlength="512" disabled><button id="terminal-send" class="accent" disabled>Send</button></form><p id="terminal-hint" role="status"></p></section>';
   return '<section class="box terminal">'+head("Console",full?'<span class="small-mono">Simulated runtime</span>':'<a href="#console">Open console</a>')+startup+logs(s,full?140:4)+(full?'<form class="cmd" id="command"><input name="cmd" aria-label="Sandbox command" autocomplete="off" placeholder="Type help for commands" required maxlength="120"><button class="accent">Send</button></form>':'')+'</section>';
 }
 function activities(s, limit) {
@@ -299,9 +341,14 @@ function paint() {
   $("context").innerHTML='<p class="crumb">Workspace / '+escapeHTML(s.name)+' / '+label(view)+'</p><div class="context-row"><div><h1>'+escapeHTML(view==="overview"?s.name:label(view))+'<span class="period">.</span></h1><p class="subtle"><span class="server-state '+(s.started?"online":"")+'">'+(s.started?"Running":s.firstDeploy && !s.files.length?"Waiting for files":"Stopped")+'</span> &nbsp; / &nbsp; '+escapeHTML([s.runtime,s.version].filter(Boolean).join(' '))+' &nbsp; / &nbsp; '+escapeHTML(s.entry || 'Awaiting startup file')+'</p></div>'+controls(s)+'</div>';
   const panels={overview,console:x=>consoleBox(x,true),files,deployments,environment,configuration,backups,activity:x=>'<section class="box">'+head("Activity history")+activities(x,80)+'</section>'};
   $("content").innerHTML=(view==="overview" && s.firstDeploy?onboarding(s):"")+panels[view](s);
+  if(view==="console" && signedIn && !vpsEnabled) {
+    const status=$("context").querySelector(".server-state");
+    status.textContent="VPS unavailable";
+    status.classList.remove("online");
+  }
   if(view==="overview") draw(s);
   if(view==="console" && vpsEnabled) {renderVps();refreshVps();}
-  else if(view==="console") $("output").scrollTop=$("output").scrollHeight;
+  else if(view==="console" && $("output")) $("output").scrollTop=$("output").scrollHeight;
 }
 
 function editFile(s, path) {
@@ -439,6 +486,8 @@ $("content").addEventListener("submit",e=>{
       draft.name=W.name(draft.name);
       if(state.servers.some(item=>item.name===draft.name)) throw Error("A server already uses this name.");
       reviewing=true;setupPage();$("panel").focus();
+    } else if(e.target.id==="vps-command") {
+      submitTerminal(e.target).catch(error=>flash(error.message));
     } else if(e.target.id==="command") {
       runControl(s=>W.command(s,data.get("cmd")));
       $("command").elements.cmd.focus();
@@ -517,6 +566,7 @@ async function initialize() {
     const session=await response.json();
     if(!session.email) { location.replace("./account#login");return; }
     owner="account:"+session.email;
+    signedIn=true;
     cloud=session.workspaceStorage==="mongodb";
     vpsEnabled=session.vpsTest===true;
     if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project on the private VPS.";

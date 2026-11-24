@@ -40,7 +40,14 @@ for count in range(60):
     time.sleep(2)
 ```
 
-6. Open **Console**, wait for **Worker online**, click **Launch on VPS**, and look for increasing heartbeat numbers. Click **Stop VPS test**. The worker reports **stopped** after removing the container. Ctrl+C in the VPS shell ends the worker. To repeat with Node, select a Node server and an uploaded JavaScript entry file.
+6. Open **Console** and wait for **Worker online**. Type `run` or click **Start**. Watch the heartbeat numbers appear, then click **Stop**. You can also type `python main.py` or, in a Node project, `node index.js` to run a specific saved file.
+
+7. To test input and output together, save the following as `test.py`. Type `python test.py` at the **Run a file** prompt. When the **Process input** field appears and the program asks for your name, type a name and press Enter. The reply and exit code appear above the input field. The terminal exchanges complete lines and refreshes on each poll. Ctrl+C in the VPS shell ends the worker.
+
+```python
+name = input("Your name? ")
+print(f"Hello, {name}!")
+```
 
 ## Trial limits
 

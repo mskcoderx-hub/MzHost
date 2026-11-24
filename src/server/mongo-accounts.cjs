@@ -18,11 +18,22 @@ async function connect(secure) {
       runtime:{
         get:()=>tests.findOne({_id:"primary"},{projection:{project:0}}),
         async poll(report,now) {
-          await tests.updateOne({_id:"primary"},{$set:{seen:new Date(now)},$setOnInsert:{desired:"stop",generation:null,state:"idle"}},{upsert:true});
+          const instance=typeof report.instance==="string" && /^[0-9a-f]{32}$/.test(report.instance)?report.instance:null;
+          await tests.updateOne({_id:"primary"},{$set:{seen:new Date(now),workerInstance:instance},$setOnInsert:{desired:"stop",generation:null,state:"idle"}},{upsert:true});
+          await tests.updateOne({_id:"primary",input:{$ne:null},"input.instance":{$ne:instance}},{$unset:{input:""},$set:{inputFailed:true}});
           if(report.generation===null || (typeof report.generation==="string" && report.generation.length===36)) {
             await tests.updateOne({_id:"primary",generation:report.generation},{$set:{state:report.state,logs:report.logs}});
+            const pending={_id:"primary",generation:report.generation,"input.instance":instance};
+            if(typeof report.inputAck==="string") {
+              await tests.updateOne({...pending,"input.id":report.inputAck},{$unset:{input:""},$set:{inputFailed:report.inputFailed===true}});
+            }
+            if(report.state!=="running") await tests.updateOne({...pending,input:{$ne:null}},{$unset:{input:""},$set:{inputFailed:true}});
           }
           return tests.findOne({_id:"primary"});
+        },
+        input(serverId,generation,line,id) {
+          const filter={_id:"primary",serverId,generation,state:"running",desired:"run",input:null,workerInstance:{$type:"string"},seen:{$gte:new Date(Date.now()-90000)}};
+          return tests.findOneAndUpdate(filter,[{$set:{input:{id:{$literal:id},line:{$literal:line},instance:"$workerInstance"},inputFailed:false}}],{returnDocument:"after",projection:{project:0}});
         },
         command(serverId,desired,project,generation) {
           const filter={_id:"primary",serverId};
@@ -31,7 +42,9 @@ async function connect(secure) {
             filter.seen={$gte:new Date(Date.now()-90000)};
             filter.$or=[{serverId},{desired:"stop",state:{$in:["stopped","idle"]}},{state:{$in:["exited","failed"]}}];
           }
-          return tests.findOneAndUpdate(filter,{$set:{serverId,desired,project,generation,state:"queued",logs:""}},{returnDocument:"after",projection:{project:0}});
+          const update={serverId,desired,project,generation,state:"queued",inputFailed:false};
+          if(desired==="run") update.logs="";
+          return tests.findOneAndUpdate(filter,{$set:update,$unset:{input:""}},{returnDocument:"after",projection:{project:0}});
         }
       },
       audit:item=>audit.insertOne({...item,expires:new Date(Date.now()+30*86400000)}),

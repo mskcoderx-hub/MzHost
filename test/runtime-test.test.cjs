@@ -14,7 +14,18 @@ test("private VPS trial checks ownership and hands the saved project only to its
     runtime:{
       get:()=>doc,
       command:(serverId,desired,project,generation)=>(doc={...doc,serverId,desired,project,generation,state:"queued"}),
-      poll:report=>{if(report.generation===doc.generation) Object.assign(doc,{state:report.state,logs:report.logs});return doc;}
+      input:(serverId,generation,line,id)=>{
+        if(doc.serverId!==serverId || doc.generation!==generation || doc.state!=="running" || doc.input || !doc.workerInstance) return null;
+        doc.input={line,id,instance:doc.workerInstance};return doc;
+      },
+      poll:report=>{
+        doc.workerInstance=report.instance;
+        if(report.generation===doc.generation) {
+          Object.assign(doc,{state:report.state,logs:report.logs});
+          if(report.inputAck===doc.input?.id) delete doc.input;
+        }
+        return doc;
+      }
     }
   },{secure:true});
   async function request(body,authorization,method="POST") {
@@ -37,6 +48,23 @@ test("private VPS trial checks ownership and hands the saved project only to its
   assert.deepEqual(job.project.files,definition.files);
   assert.equal((await request({generation:job.generation,state:"running",logs:"hello"},bearer)).data.project,undefined);
   assert.equal((await request(null,undefined,"GET")).data.logs,"hello");
+  const instance="1".repeat(32);
+  const running={generation:job.generation,state:"running",logs:"Your name?",instance};
+  await request(running,bearer);
+  const input={action:"input",serverId:definition.id,generation:job.generation,line:"test user"};
+  assert.equal((await request({...input,generation:"stale"})).code,409);
+  assert.equal((await request({...input,line:"bad\nline"})).code,400);
+  email="other@example.test";assert.equal((await request(input)).code,403);email=process.env.VPS_TEST_EMAIL;
+  const sent=await request(input);assert.equal(sent.code,202);assert.equal(sent.data.inputPending,true);assert.equal(sent.data.input,undefined);
+  assert.equal((await request(input)).code,409);
+  const pending=(await request(running,bearer)).data.input;
+  assert.equal(pending.line,"test user");
+  assert.deepEqual((await request(running,bearer)).data.input,pending);
+  assert.equal((await request({...running,inputAck:pending.id},bearer)).data.input,undefined);
+  definition.files.push({path:"src/test.py",text:"print(2)"});
+  assert.equal((await request({...action,entry:"src/test.py"})).code,202);
+  assert.equal((await request(poll,bearer)).data.project.entry,"src/test.py");
+  assert.equal(definition.entry,"main.py");
   assert.equal((await request({...action,action:"stop"})).code,202);
   assert.equal((await request(poll,bearer)).data.desired,"stop");
   definition.files.push({path:"../outside",text:"test"});
