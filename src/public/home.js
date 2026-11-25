@@ -38,7 +38,6 @@ document.querySelectorAll("[data-open]").forEach(button => {
 
 function showReviews(reviews) {
   const list = document.getElementById("featured-reviews");
-  const caption = document.getElementById("review-caption");
   const featured = reviews.filter(review =>
     review && [4, 5].includes(review.stars) && typeof review.text === "string" && review.text.trim()
   ).slice(0, 6);
@@ -49,16 +48,29 @@ function showReviews(reviews) {
     const score = document.createElement("span");
     const quote = document.createElement("blockquote");
     const name = document.createElement("figcaption");
-    score.textContent = review.stars + " / 5";
+    score.className = "review-score";
+    score.setAttribute("role","img");
+    score.setAttribute("aria-label",review.stars+" out of 5 stars");
+    for(let i=0;i<5;i++) {
+      const star=document.createElement("i");
+      if(i<review.stars) star.className="filled";
+      score.append(star);
+    }
     quote.textContent = review.text.trim();
     const author = document.createElement("span");
     author.textContent = review.name || "Discord member";
-    const avatar = document.createElement("img");
-    const fallback = "./images/community-avatar.png";
-    avatar.alt = ""; avatar.width = 36; avatar.height = 36;
-    avatar.src = review.avatar?.startsWith("https://cdn.discordapp.com/avatars/") ? review.avatar : fallback;
-    avatar.addEventListener("error", () => { avatar.src = fallback; }, {once:true});
-    name.append(avatar,author);
+    const portrait = document.createElement("span");
+    portrait.className="review-portrait";
+    portrait.setAttribute("aria-hidden","true");
+    portrait.textContent = Array.from(author.textContent.trim())[0]?.toUpperCase() || "M";
+    if (/^https:\/\/cdn\.discordapp\.com\/(?:embed\/)?avatars\//.test(review.avatar || "")) {
+      const avatar = document.createElement("img");
+      avatar.alt = ""; avatar.width = 36; avatar.height = 36;
+      avatar.addEventListener("error", () => avatar.remove(), {once:true});
+      avatar.src = review.avatar;
+      portrait.append(avatar);
+    }
+    name.append(portrait,author);
     figure.append(score, quote, name);
     if (review.image?.startsWith("https://cdn.discordapp.com/attachments/1574753304016068759/")) {
       const image = document.createElement("img");
@@ -68,9 +80,47 @@ function showReviews(reviews) {
     }
     list.append(figure);
   }
-  caption.textContent = featured.length ? "Selected 4- and 5-star reviews from our Discord community." : "No featured Discord reviews yet.";
   list.hidden = !featured.length;
+  document.getElementById("feedback").hidden=!featured.length;
+  refreshReviewMotion();
 }
+
+const reviewRail=document.getElementById("featured-reviews");
+const motionButton=document.getElementById("review-motion");
+const reducedMotion=matchMedia("(prefers-reduced-motion: reduce)");
+let paused=false, hovered=false, inView=false, frame=0, direction=1;
+function refreshReviewMotion() {
+  cancelAnimationFrame(frame);
+  const overflow=reviewRail.scrollWidth-reviewRail.clientWidth;
+  motionButton.hidden=overflow<2 || reducedMotion.matches;
+  motionButton.textContent=paused?"Play scrolling":"Pause scrolling";
+  if(motionButton.hidden || paused || hovered || !inView || document.hidden || reviewRail.matches(":focus-within")) return;
+  let position=reviewRail.scrollLeft, last=0, restUntil=0;
+  function move(now) {
+    const elapsed=last?Math.min(now-last,60):0;
+    last=now;
+    if(now>=restUntil) {
+      position+=direction*elapsed*.029;
+      if(position>=overflow || position<0) {
+        position=Math.max(0,Math.min(position,overflow));
+        direction=position===0?1:-1;
+        restUntil=now+900;
+      }
+      reviewRail.scrollLeft=position;
+    }
+    frame=requestAnimationFrame(move);
+  }
+  frame=requestAnimationFrame(move);
+}
+motionButton.addEventListener("click",()=>{paused=!paused;refreshReviewMotion();});
+reviewRail.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse"){hovered=true;refreshReviewMotion();}});
+reviewRail.addEventListener("pointerleave",()=>{hovered=false;refreshReviewMotion();});
+for(const event of ["pointerdown","wheel"]) reviewRail.addEventListener(event,()=>{paused=true;refreshReviewMotion();},{passive:true});
+for(const event of ["focusin","focusout"]) reviewRail.addEventListener(event,()=>requestAnimationFrame(refreshReviewMotion));
+reducedMotion.addEventListener("change",refreshReviewMotion);
+document.addEventListener("visibilitychange",refreshReviewMotion);
+new ResizeObserver(refreshReviewMotion).observe(reviewRail);
+new IntersectionObserver(([entry])=>{inView=entry.isIntersecting;refreshReviewMotion();}).observe(reviewRail);
 
 async function loadFeaturedReviews() {
   const response = await fetch("/api/reviews");

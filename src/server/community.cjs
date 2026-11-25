@@ -15,8 +15,11 @@ const snowflake=value=>typeof value==="string" && /^\d{17,20}$/.test(value);
 const clientId=()=>process.env.DISCORD_CLIENT_ID?.trim();
 const configured=()=>Boolean(process.env.DISCORD_BOT_TOKEN?.trim() && snowflake(clientId()));
 
-async function discord(channel,suffix="",method="GET",payload) {
-  const response=await fetch("https://discord.com/api/v10/channels/"+channel+"/messages"+suffix,{
+function discord(channel,suffix="",method="GET",payload) {
+  return discordRequest("/channels/"+channel+"/messages"+suffix,method,payload);
+}
+async function discordRequest(path,method="GET",payload) {
+  const response=await fetch("https://discord.com/api/v10"+path,{
     method,redirect:"error",signal:AbortSignal.timeout(4500),
     headers:{Authorization:"Bot "+process.env.DISCORD_BOT_TOKEN.trim(),"Content-Type":"application/json"},
     body:payload && JSON.stringify(payload)
@@ -50,12 +53,31 @@ function reviewFrom(message) {
   const customer=/^Customer:\s*<@!?(\d+)>/im.exec(fields)?.[1];
   const member=message.mentions?.find(user=>user.id===customer);
   const result={id:message.id,name:member?.global_name || member?.username || "MzHost community member",stars:Number(rating[1]),text:feedback.replace(/\s+/g," ").slice(0,360)};
-  if(snowflake(customer) && /^(a_)?[a-f0-9]{32}$/.test(member?.avatar||""))
-    result.avatar="https://cdn.discordapp.com/avatars/"+customer+"/"+member.avatar+".png?size=96";
   const photo=message.attachments?.find(file=>/^image\/(?:jpeg|png|webp)$/.test(file.content_type) &&
     typeof file.url==="string" && file.url.startsWith("https://cdn.discordapp.com/attachments/"+reviewsChannel+"/"));
   if(photo) result.image=photo.url;
-  return result;
+  return {result,customer,member};
+}
+
+async function resolveReviewAuthors(entries) {
+  const profiles=new Map();
+  for(const {customer,member} of entries) {
+    if(snowflake(customer) && member && member.avatar!==undefined) profiles.set(customer,member);
+  }
+  return Promise.all(entries.map(async ({result,customer})=>{
+    if(!snowflake(customer) || customer===clientId()) return result;
+    if(!profiles.has(customer)) profiles.set(customer,discordRequest("/users/"+customer).catch(()=>null));
+    const profile=await profiles.get(customer);
+    if(profile?.id!==customer || profile.bot) return result;
+    result.name=profile.global_name || profile.username || result.name;
+    if(/^(a_)?[a-f0-9]{32}$/.test(profile.avatar||"")) {
+      result.avatar="https://cdn.discordapp.com/avatars/"+customer+"/"+profile.avatar+".png?size=128";
+    } else if(profile.avatar===null) {
+      const index=Number(profile.discriminator)>0 ? Number(profile.discriminator)%5 : Number((BigInt(customer)>>22n)%6n);
+      result.avatar="https://cdn.discordapp.com/embed/avatars/"+index+".png";
+    }
+    return result;
+  }));
 }
 
 async function lock(collection,id,freshBefore) {
@@ -81,14 +103,15 @@ async function reviews(db) {
   }
   const owned={_id:"reviews",lease:claim.lease};
   try {
-    const items=[];
+    const entries=[];
     let before="";
-    for(let page=0;page<3 && items.length<6;page++) {
+    for(let page=0;page<3 && entries.length<6;page++) {
       const messages=await discord(reviewsChannel,"?limit=100"+before);
-      items.push(...messages.map(reviewFrom).filter(Boolean).slice(0,6-items.length));
+      entries.push(...messages.map(reviewFrom).filter(Boolean).slice(0,6-entries.length));
       if(messages.length<100 || !snowflake(messages.at(-1)?.id)) break;
       before="&before="+messages.at(-1).id;
     }
+    const items=await resolveReviewAuthors(entries);
     await collection.updateOne(owned,{$set:{items,updated:new Date()},$unset:{lease:"",until:""}});
     return items;
   } catch(error) {

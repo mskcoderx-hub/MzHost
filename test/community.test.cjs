@@ -45,7 +45,22 @@ test("vouches in Discord embeds use the customer's avatar and an attached photo"
   t.mock.method(global,"fetch",async()=>Response.json([msg]));
   const [review]=await reviews(database());
   assert.equal(review.name,"KenzDC");assert.equal(review.image,image);
-  assert.equal(review.avatar,"https://cdn.discordapp.com/avatars/"+id+"/"+hash+".png?size=96");
+  assert.equal(review.avatar,"https://cdn.discordapp.com/avatars/"+id+"/"+hash+".png?size=128");
+});
+test("feedback with no resolved customer mention fetches the customer once, even across tickets",async t=>{
+  const bot="123456789012345678",customer="222222222222222222",hash="b".repeat(32);
+  process.env.DISCORD_BOT_TOKEN="test";process.env.DISCORD_CLIENT_ID=bot;
+  const message={author:{bot:true,id:bot,avatar:"a".repeat(32)},mentions:[],components:[{type:17,components:[{type:10,
+    content:"### MzHost - Support Feedback\n**Customer:** <@"+customer+">\n**Assigned staff:** <@"+bot+">\n**Rating:** 5/5\n**Feedback:** Great!"}]}]};
+  let lookups=0;
+  t.mock.method(global,"fetch",async url=>{
+    if(url.includes("/channels/")) return Response.json(["1574753304016068760","1574753304016068761"].map(id=>({...message,id})));
+    assert.ok(url.endsWith("/users/"+customer));lookups++;
+    return Response.json({id:customer,global_name:"Reviewer",avatar:hash});
+  });
+  const items=await reviews(database());
+  assert.equal(items.length,2);assert.equal(lookups,1);
+  for(const item of items){assert.equal(item.name,"Reviewer");assert.ok(item.avatar.includes(customer+"/"+hash));}
 });
 test("the Discord status panel is posted once and edited when service state changes",async t=>{
   process.env.DISCORD_BOT_TOKEN="unit-test";process.env.DISCORD_CLIENT_ID="123456789012345678";

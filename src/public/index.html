@@ -121,9 +121,9 @@
     <section class="wrap feedback lower" id="feedback" aria-labelledby="feedback-title">
       <div class="feedback-copy">
         <h2 id="feedback-title">What our clients say<span class="period">.</span></h2>
-        <p id="review-caption">Featured reviews from our Discord community will appear here.</p>
+        <button id="review-motion" type="button" aria-controls="featured-reviews" hidden>Pause scrolling</button>
       </div>
-      <div class="featured-reviews" id="featured-reviews" hidden></div>
+      <div class="featured-reviews" id="featured-reviews" role="region" aria-labelledby="feedback-title" tabindex="0" hidden></div>
     </section>
     <section class="wrap faq lower" id="faq" aria-labelledby="faq-title">
       <h2 id="faq-title">Questions<span class="period">.</span></h2>
