@@ -18,6 +18,7 @@ function validServer(server) {
   const project=s=>s && runtime(s.runtime) && typeof s.entry==="string" && list(s.files,80,file);
   const snapshot=s=>project(s) && id(s.id) && Number.isFinite(s.time);
   const event=e=>e && Number.isFinite(e.time) && typeof e.message==="string";
+  if(server?.folders!==undefined) {try {require("../public/project-tree.js").validate(server);} catch {return false;}}
   return project(server) && id(server.id) && typeof server.name==="string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(server.name) &&
     (!server.plan || Object.hasOwn(plans,server.plan)) && memory(server.memory) && Number.isFinite(server.started) &&
     list(server.backups,5,b=>snapshot(b) && memory(b.memory)) && list(server.deployments,3,r=>snapshot(r) && typeof r.name==="string") &&
@@ -65,7 +66,11 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
       if(action==="workspace") {
         if(!store.workspace) return send(404,{});
         if(!email) {console.info(JSON.stringify({event:"workspace.access_denied",time:new Date().toISOString()}));return send(401,{});}
-        if(req.method==="GET") return send(200,await store.workspace(email));
+        if(req.method==="GET") {
+          const since=new URL(req.url||"/api/workspace","https://localhost").searchParams.get("since");
+          if(since!==null && store.workspaceRevision && String(await store.workspaceRevision(email))===since) return send(200,{revision:Number(since)});
+          return send(200,await store.workspace(email));
+        }
         if(req.method!=="PUT") return send(405,{});
         if(!sameOrigin()) return send(403,{});
         if(!await store.allowAttempt("save:"+digest(email),now,90)) return send(429,{message:"Too many saves. Retry in a minute."});

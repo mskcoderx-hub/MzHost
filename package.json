@@ -8,6 +8,8 @@
     "node": ">=24"
   },
   "dependencies": {
-    "mongodb": "^6.22.0"
+    "mongodb": "^6.22.0",
+    "yauzl": "3.4.0",
+    "node-unrar-js": "2.0.2"
   }
 }

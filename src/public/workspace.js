@@ -104,16 +104,18 @@ const Workspace = (() => {
   }
   function storeFile(server, file, replacePath = null) {
     file.path = filePath(file.path);
+    if(ProjectTree.folders(server).includes(file.path) && file.path!==replacePath) throw Error("A folder already uses that path.");
     const others = server.files.filter(f => f.path !== replacePath);
     if (others.some(f => f.path === file.path || f.path.startsWith(file.path+"/") || file.path.startsWith(f.path+"/"))) throw Error("A file or folder already uses that path.");
     if (others.length >= 80) throw Error("This sandbox supports 80 files per server.");
-    if ((file.binary ? file.data.length * .75 : byteLength(file.text)) > 256*1024) throw Error("Choose a file under 256 KB for this preview.");
+    const bytes=file.binary?Math.floor(file.data.length*3/4)-file.data.match(/=*$/)[0].length:byteLength(file.text);
+    if (bytes > 256*1024) throw Error("Choose a file of 256 KB or smaller.");
     server.files = [...others,file].sort((a,b)=>a.path.localeCompare(b.path));
     if (replacePath && server.entry === replacePath) server.entry = file.path;
   }
   function snapshot(server) {
     if (server.backups.length >= 5) throw Error("Remove a backup first. Each server has five backup slots.");
-    server.backups.unshift({id:uid(),time:Date.now(),files:structuredClone(server.files),entry:server.entry,runtime:server.runtime,version:server.version,memory:server.memory,restart:server.restart});
+    server.backups.unshift({id:uid(),time:Date.now(),folders:[...(server.folders||[])],files:structuredClone(server.files),entry:server.entry,runtime:server.runtime,version:server.version,memory:server.memory,restart:server.restart});
     event(server,"Backup created");
   }
   function restore(server, id) {
@@ -121,6 +123,7 @@ const Workspace = (() => {
     if (!back) throw Error("Backup no longer exists.");
     if (server.started) power(server,"stop");
     for (const key of ["files","entry","runtime","memory","restart"]) server[key]=structuredClone(back[key]);
+    server.folders=[...(back.folders||[])];
     if(server.plan) server.version=back.version || versions[server.runtime][0];
     event(server,"Restored files and configuration from backup");
     log(server,"Backup restored. Server is stopped.");
@@ -145,7 +148,7 @@ const Workspace = (() => {
     const note=description.trim();
     if (!note || note.length>80) throw Error("Enter a release name of up to 80 characters.");
     power(server,server.started?"restart":"start");
-    const release={id:uid(),name:note,time:Date.now(),files:structuredClone(server.files),entry:server.entry,runtime:server.runtime,version:server.version};
+    const release={id:uid(),name:note,time:Date.now(),files:structuredClone(server.files),folders:[...(server.folders||[])],entry:server.entry,runtime:server.runtime,version:server.version};
     server.firstDeploy=false;
     server.deployments.unshift(release);
     server.deployments.splice(3);
@@ -155,7 +158,7 @@ const Workspace = (() => {
   function redeploy(server,id) {
     const release=server.deployments.find(item=>item.id===id);
     if (!release) throw Error("Release no longer exists.");
-    server.files=structuredClone(release.files);
+    server.files=structuredClone(release.files);server.folders=[...(release.folders||[])];
     server.entry=release.entry;server.runtime=release.runtime;
     if(server.plan) server.version=release.version || versions[server.runtime][0];
     deploy(server,release.name);

@@ -2,14 +2,16 @@ const {randomBytes,createHash}=require("node:crypto");
 const hash=s=>createHash("sha256").update(s).digest("hex");
 const token=()=>randomBytes(32).toString("hex");
 async function discord({action,req,res,db,store,send,secure,oldToken}) {
-  const clientId=process.env.DISCORD_CLIENT_ID,secret=process.env.DISCORD_CLIENT_SECRET,origin=process.env.APP_ORIGIN;
-  if(!clientId || !secret || !origin || !db) return send(503,{message:"Discord sign-in needs the application credentials and MongoDB."});
+  const clientId=process.env.DISCORD_CLIENT_ID,secret=process.env.DISCORD_CLIENT_SECRET;
+  if(!clientId || !secret || !db) return send(503,{message:"Discord sign-in needs the application credentials and MongoDB."});
   if(req.method!=="GET") return send(405,{});
-  const redirectUri=origin+"/api/discord-callback";
+  const callback=require("./oauth-origin.cjs").callbackUrl("discord",secure);
+  const {origin}=callback,redirectUri=callback.href;
   const states=db.collection("oauth_states");
   const stateCookie="; HttpOnly; Path=/api; SameSite=Lax"+(secure?"; Secure":"");
   const redirect=location=>res.writeHead(302,{Location:location,"Cache-Control":"no-store","Referrer-Policy":"no-referrer"}).end();
   if(action==="discord-login") {
+    if(req.headers.host && req.headers.host!==callback.host) return redirect(origin+"/api/discord-login"+(new URL(req.url,origin).searchParams.get("next")==="/billing"?"?next=/billing":""));
     if(!await store.allowAttempt("oauth:"+hash(req.socket?.remoteAddress||"unknown"),Date.now(),120)) return send(429,{message:"Try again shortly."});
     const state=token(),returnTo=new URL(req.url,origin).searchParams.get("next");
     await states.insertOne({_id:hash(state),expires:new Date(Date.now()+600000),billing:returnTo==="/billing"});

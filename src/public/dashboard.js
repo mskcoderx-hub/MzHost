@@ -68,6 +68,22 @@ function renderVps() {
   renderServerStatuses();
 }
 function syncedChangesPending() {return syncing || acknowledged!==state || conflict;}
+let checkingWorkspace=false;
+async function checkWorkspace() {
+  const ready=()=>cloud && !document.hidden && !settingsDirty && !$("modal").open && !syncedChangesPending() && view!=="setup";
+  if(checkingWorkspace || !ready()) return;
+  const before=revision;
+  checkingWorkspace=true;
+  try {
+    const response=await fetch("/api/workspace?since="+before,{cache:"no-store"});
+    if(!response.ok) return;
+    const saved=await response.json();
+    if(!saved.workspace || !ready() || before!==revision || saved.revision<=revision) return;
+    revision=saved.revision;state=saved.workspace;acknowledged=state;
+    FileManager.clear();paint();flash("Workspace updated.");
+  } catch { /* Recheck on the next poll. */ }
+  finally {checkingWorkspace=false;}
+}
 async function refreshVps() {
   if(!vpsEnabled || view==="setup" || !state?.servers.length || vpsReading || vpsPending || document.hidden) return;
   vpsReading=true;
@@ -177,11 +193,16 @@ function showModal(title, html, submitText, handler) {
   submitModal=handler;
   $("modal").showModal();
 }
-$("modal-form").addEventListener("submit",e=>{
+$("modal-form").addEventListener("submit",async e=>{
   e.preventDefault();
-  try { submitModal(new FormData(e.target)); $("modal").close(); }
+  if($("modal-submit").disabled) return;
+  $("modal-submit").disabled=true;
+  try { await submitModal(new FormData(e.target)); $("modal").close(); }
   catch(error) { $("modal-error").textContent=error.message; }
+  finally { $("modal-submit").disabled=false; }
 });
+$("modal").addEventListener("cancel",e=>{if($("modal-submit").disabled) e.preventDefault();});
+$("modal").addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="s" && $("modal-form").elements.text){e.preventDefault();$("modal-form").requestSubmit();}});
 function head(title, right="") {
   return '<div class="panel-head"><h2>'+title+'</h2>'+right+'</div>';
 }
@@ -192,7 +213,7 @@ function controls(s) {
     if(vpsEnabled) return '<div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Start</button><button id="vps-stop" data-action="vps-stop" disabled>Stop</button></div>';
     return '<div class="controls"><button data-action="start" class="accent" '+(s.started || !W.startup(s).selected?'disabled':'')+'>Start</button><button data-action="stop" '+(s.started?'':'disabled')+'>Stop</button>'+(s.started?button("Restart","restart"):"")+'</div>';
   }
-  if(signedIn) return '<div class="controls"><a href="#console">Open console</a></div>';
+  if(signedIn) return view==="files"?"":'<div class="controls"><a class="button" href="#console">Open console</a></div>';
   if (s.firstDeploy && !s.started) return '<div class="controls"><a href="#files">Open files</a></div>';
   return '<div class="controls">'+(s.started ? button("Restart","restart","","")+button("Stop server","stop","","") : button("Start server","start","","accent"))+'</div>';
 }
@@ -234,9 +255,13 @@ function sample(s, tick) {
   return Math.round(base+8*Math.sin(tick*.54)+5*Math.sin(tick*.17));
 }
 function overview(s) {
-  if(signedIn) return '<section class="box">'+head("Project files",'<a href="#files">Manage files</a>')+
-    '<p>'+s.files.length+' saved · '+(s.entry?'Startup file <code>'+escapeHTML(s.entry)+'</code>':'Choose a startup file in Files')+'</p></section>'+
-    '<section class="box">'+head("Recent activity",'<a href="#activity">View all</a>')+activities(s,4)+'</section>';
+  if(signedIn) {
+    const card=(route,title,detail)=>'<a class="project-shortcut" href="#'+route+'"><strong>'+title+'</strong><span>'+escapeHTML(detail)+'</span></a>';
+    const shortcuts=card("files","Manage files",s.files.length+" files • "+size(s.files.reduce((total,f)=>total+used(f),0)))+
+      card("console","Open console",s.entry?"Run "+s.entry:"View runtime controls and logs")+
+      card("deployments","GitHub deployments","Connect a branch or sync changes");
+    return '<div class="shortcut-grid">'+shortcuts+'</div><section class="box">'+head("Recent activity",'<a href="#activity">View all</a>')+(activities(s,5)||'<p class="subtle">No recent activity.</p>')+'</section>';
+  }
   const tick=Math.floor(Date.now()/5000), memory=sample(s,tick);
   const stat=(key,value,unit)=>'<div class="stat"><span class="key">'+key+'</span><strong>'+value+'</strong><small>'+unit+'</small></div>';
   return '<div class="cards">'+stat("Memory",memory+' MB','of '+s.memory+' MB')+stat("CPU usage",s.started?(2+Math.abs(Math.sin(tick*.4))*2).toFixed(1)+'%':'0%','simulated')+stat("Project files",s.files.length,size(s.files.reduce((n,f)=>n+used(f),0))+' in use')+'</div>'+
@@ -258,37 +283,6 @@ function draw(s) {
   }
   g.stroke();
 }
-function fileRows(s) {
-  const dirs=new Set(), rows=[];
-  const query=filter.trim().toLowerCase();
-  for (const f of s.files) {
-    if (query) { if (f.path.toLowerCase().includes(query)) rows.push(f); continue; }
-    if (!f.path.startsWith(directory)) continue;
-    const local=f.path.slice(directory.length);
-    if (local.includes("/")) dirs.add(local.split("/")[0]); else rows.push(f);
-  }
-  const folders=[...dirs].sort().map(name=>'<div class="file-row">'+button(name+"/","directory",directory+name+"/","file-name dir-name")+'</div>');
-  rows.sort((a,b)=>Number(b.path===s.entry)-Number(a.path===s.entry)||a.path.localeCompare(b.path));
-  for (const f of rows) {
-    const entry=f.path===s.entry && W.runnable(s.runtime,f);
-    const setStartup=W.runnable(s.runtime,f) && !entry ? button("Set as startup","set-entry",f.path) : "";
-    const start=entry ? '<span class="entry-tag">Runs first</span>' : setStartup;
-    folders.push('<div class="file-row">'+button(query?f.path:f.path.slice(directory.length),"open-file",f.path,"file-name")+'<span class="small-mono">'+size(used(f))+'</span><div class="group-end">'+start+'<details class="file-menu"><summary aria-label="Actions for '+escapeHTML(f.path)+'">Actions</summary><div>'+(entry?'<button disabled>Current startup file</button>':setStartup)+button("Rename","rename-file",f.path)+button("Download","download",f.path)+button("Delete","delete-file",f.path,"small-btn danger")+'</div></details></div></div>');
-  }
-  return folders.join("") || '<p class="empty">'+(s.files.length?"No matching files.":"Your project is empty. Upload a folder or create your first file.")+'</p>';
-}
-function files(s) {
-  const launch=W.startup(s);
-  let suggestion="";
-  if (launch.suggested && launch.suggested!==launch.selected) suggestion='<div class="suggest-file"><span>Suggested by '+escapeHTML(launch.reason)+': <b>'+escapeHTML(launch.suggested.path)+'</b></span>'+button("Use this file","set-entry",launch.suggested.path)+'</div>';
-  if(directory && !s.files.some(f=>f.path.startsWith(directory))) directory="";
-  let prefix="";
-  const crumbs=[button("Project root","directory","","file-name")];
-  for(const part of directory.split("/").filter(Boolean)) {prefix+=part+"/";crumbs.push(button(part,"directory",prefix,"file-name"));}
-  const entry=startupPicker(s)+(launch.selected ? '<code>'+escapeHTML(launch.command)+'</code>'+button("Edit startup file","open-file",s.entry) : '');
-  return '<section class="box startup-box">'+head("Startup file",'<a href="#console">Open console</a>')+'<div class="file-tools">'+entry+'</div>'+suggestion+'</section>'+
-    '<section class="box file-browser">'+head("Project files")+'<div class="file-tools"><input id="file-search" class="file-search" aria-label="Search all file paths" placeholder="Search all files" value="'+escapeHTML(filter)+'">'+button("Upload files","upload","","accent")+button("Upload folder","upload-folder","","")+button("New file","new-file","","")+'</div><nav class="file-crumbs" aria-label="Folder path">'+crumbs.join('<span>/</span>')+'</nav><div class="list" id="file-list">'+fileRows(s)+'</div></section>';
-}
 function environment(s) {
   return '<section class="box">'+head("Environment variables",button("Add variable","new-env","","accent"))+'<p class="subtle">Use test values only. Variables are excluded from project backups.</p><div class="list">'+(s.env.map(item=>'<div class="env-row"><strong>'+escapeHTML(item.key)+'</strong><span class="env-value">••••••••</span><div class="group-end">'+button("Edit","edit-env",item.key)+button("Remove","remove-env",item.key)+'</div></div>').join("")||'<p class="empty">No variables configured.</p>')+'</div></section>';
 }
@@ -309,12 +303,16 @@ function backups(s) {
   return '<section class="box">'+head("Backups",button("Create backup","backup","","accent"))+'<p class="subtle">Snapshots include project files and startup configuration. Restoring a snapshot stops the server.</p><div class="list">'+(s.backups.map(b=>'<div class="file-row"><strong>'+escapeHTML(dateTime(b.time))+'</strong><span class="small-mono">'+b.files.length+' files</span><div class="group-end">'+button("Restore","restore",b.id)+button("Remove","remove-backup",b.id)+'</div></div>').join("")||'<p class="empty">No backups yet.</p>')+'</div></section>';
 }
 function deployments(s) {
+  if(signedIn) return GitHubPanel.render(s);
   const rows=s.deployments.map(r=>'<div class="file-row"><strong>'+escapeHTML(r.name)+'</strong><span class="small-mono">'+escapeHTML(dateTime(r.time))+' · '+r.files.length+' files</span><div class="group-end">'+button("Redeploy","redeploy",r.id)+'</div></div>').join("");
   return '<section class="box">'+head("Release history",button("Deploy current files","deploy","","accent"))+'<p class="subtle">Test a release from the current files and entry point. The last three releases are available to redeploy.</p><div class="list">'+(rows||'<p class="empty">No releases yet.</p>')+'</div></section>';
 }
+function slotRack() {
+  const n=state.servers.length;return '<div class="rack-art" role="img" aria-label="'+n+' of '+W.serverLimit+' server slots used"><div class="rack-rig">'+Array.from({length:W.serverLimit},(_,i)=>'<i class="'+(i<n?"in-use":"")+'"></i>').join("")+'</div></div>';
+}
 function fleet() {
-  return state.servers.map(s=>'<article class="box server-card"><div><h2>'+button(s.name,"select-server",s.id,"file-name")+'</h2><p class="subtle">'+escapeHTML([s.runtime,s.version].filter(Boolean).join(" "))+' · '+s.files.length+' '+(s.files.length===1?"file":"files")+'</p></div>'+
-    '<span class="server-state" data-server-status="'+escapeHTML(s.id)+'"></span><div class="controls">'+button("Files","server-files",s.id)+button("Open console","server-console",s.id,"accent")+'</div></article>').join("");
+  return '<div class="fleet-grid">'+state.servers.map(s=>'<article class="box server-card"><div class="card-runtime"><span class="runtime-tile" aria-hidden="true">'+(s.runtime==="Python"?"Py":"JS")+'</span><span>'+escapeHTML(s.runtime)+'</span></div><div><h2>'+button(s.name,"select-server",s.id,"file-name")+'</h2><p class="subtle">'+escapeHTML([s.runtime,s.version].filter(Boolean).join(" "))+' · '+s.files.length+' '+(s.files.length===1?"file":"files")+'</p></div>'+
+    '<span class="server-state" data-server-status="'+escapeHTML(s.id)+'"></span><div class="controls">'+button("Manage files","server-files",s.id)+button("Open console","server-console",s.id,"accent")+'</div></article>').join("")+'</div>';
 }
 function setupPage() {
   if(signedIn && !accountPlan) {location.replace("/billing");return;}
@@ -340,7 +338,7 @@ function planHint(p) {
 }
 function onboarding(s) {
   if(signedIn) {
-    if(!s.files.length) return '<section class="box launch-guide">'+head("Upload your project",'<a href="#files">Open files</a>')+'<p>Upload your bot or app in Files, then choose which file runs first.</p></section>';
+    if(!s.files.length) return '<section class="box launch-guide">'+head("Upload your project",'<a href="#files">Open files</a>')+'<p>Upload files or <a href="#deployments">import a GitHub repository</a>, then choose the file to run.</p></section>';
     if(!W.startup(s).selected) return '<section class="box launch-guide">'+head("Choose your startup file",'<a href="#files">Choose file</a>')+'<p>Select the file that starts your project.</p></section>';
     return "";
   }
@@ -356,26 +354,28 @@ function onboarding(s) {
 function paint() {
   if (!state) return;
   const s=active();
-  $("context").classList.toggle("overview-context",Boolean(s)&&view==="overview");
+  $("context").classList.toggle("overview-context",view==="servers" || (Boolean(s)&&view==="overview"));
   $("server-switch").innerHTML=state.servers.map(item=>'<option value="'+escapeHTML(item.id)+'" '+(item===s?"selected":"")+'>'+escapeHTML(item.name)+'</option>').join("");
   $("server-switch").disabled=!s;
   for(const a of $("views").querySelectorAll("a")) {
-    a.hidden=(view==="servers" || view==="setup" || !s) && a.hash!=="#servers";
+    a.hidden=!s && a.hash!=="#servers";
     if(a.hash==="#"+view) a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");
   }
   if(view==="setup") { setupPage();return; }
-  if (!s) { document.title="My servers | MzHost"; $("context").innerHTML='<h1>My servers<span class="period">.</span></h1>'; $("content").innerHTML='<section class="box setup-card">'+head("Create your first server")+'<p class="subtle">Choose a runtime and plan, then upload your project.</p>'+button("New server","create-server","","accent")+'</section>';return; }
+  if (!s) { document.title="My servers | MzHost"; $("context").innerHTML='<h1>My servers<span class="period">.</span></h1>'+slotRack(); $("content").innerHTML='<section class="box setup-card">'+head("Create your first server")+'<p class="subtle">Choose a runtime and plan, then upload your project.</p>'+button("New server","create-server","","accent")+'</section>';return; }
   if (view==="servers") {
     document.title="My servers | MzHost";
-    $("context").innerHTML='<div class="context-row"><div><h1>My servers<span class="period">.</span></h1><p class="subtle">'+state.servers.length+' of '+W.serverLimit+' server slots used</p></div>'+button("New server","create-server","","accent")+'</div>';
+    $("context").innerHTML='<div class="context-row"><div><h1>My servers<span class="period">.</span></h1><p class="subtle">'+state.servers.length+' of '+W.serverLimit+' server slots used</p></div>'+button("New server","create-server","","accent")+'</div>'+slotRack();
     $("content").innerHTML=fleet();renderServerStatuses();refreshVps();return;
   }
   document.title=label(view)+" · "+s.name+" | MzHost";
   $("context").innerHTML='<p class="crumb">Workspace / '+escapeHTML(s.name)+' / '+label(view)+'</p><div class="context-row"><div><h1>'+escapeHTML(view==="overview"?s.name:label(view))+'<span class="period">.</span></h1><p class="subtle"><span class="server-state '+(s.started?"online":"")+'">'+(s.started?"Running":s.firstDeploy && !s.files.length?"Waiting for files":"Stopped")+'</span> &nbsp; / &nbsp; '+escapeHTML([s.runtime,s.version].filter(Boolean).join(' '))+' &nbsp; / &nbsp; '+escapeHTML(s.entry || 'Awaiting startup file')+'</p></div>'+controls(s)+'</div>';
-  const panels={overview,console:x=>consoleBox(x,true),files,deployments,environment,configuration,backups,activity:x=>'<section class="box">'+head("Activity history")+activities(x,80)+'</section>'};
+  const panels={overview,console:x=>consoleBox(x,true),files:FileManager.render,deployments,environment,configuration,backups,activity:x=>'<section class="box">'+head("Activity history")+activities(x,80)+'</section>'};
   $("content").innerHTML=(view==="overview" && s.firstDeploy?onboarding(s):"")+panels[view](s);
+  if(view==="overview") $("context").insertAdjacentHTML("beforeend",slotRack());
   $("context").querySelector(".server-state").dataset.serverStatus=s.id;
   renderServerStatuses();
+  if(view==="deployments") GitHubPanel.load(s);
   if(view==="overview") draw(s);
   if(view==="console" && vpsEnabled) {renderVps();refreshVps();}
   else if(view==="console" && $("output")) $("output").scrollTop=$("output").scrollHeight;
@@ -384,8 +384,19 @@ function paint() {
 
 function editFile(s, path) {
   const f=s.files.find(item=>item.path===path);
-  if(f?.binary) { flash("This is a binary file. Use Download to open it.");return; }
-  showModal(f?"Edit file":"New file",field("File path","path",f?.path||directory, 'required maxlength="160" placeholder="src/main.py"')+
+  if(f && /\.(zip|rar)$/i.test(f.path)) return FileManager.action("fm-extract",f.path,s);
+  if(f?.binary) {
+    const mime={png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",webp:"image/webp"}[f.path.split(".").pop().toLowerCase()];
+    const preview=mime?'<img class="file-preview" alt="Image preview">':'<p>Download this file to open it on your device.</p>';
+    showModal(f.path,preview,"Download",()=>download(f));
+    if(mime) {
+      const bytes=Uint8Array.from(atob(f.data),c=>c.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:mime}));
+      $("modal-body").querySelector("img").src=url;
+      $("modal").addEventListener("close",()=>URL.revokeObjectURL(url),{once:true});
+    }
+    return;
+  }
+  showModal(f?"Edit "+f.path.split("/").pop():"New file",field("File path","path",f?.path||directory, 'required maxlength="160" placeholder="src/main.py"')+
     '<label>Contents<textarea name="text" spellcheck="false">'+escapeHTML(f?.text||"")+'</textarea></label>',"Save file", data=>commit(server=>{
     W.storeFile(server,{path:data.get("path"),text:data.get("text")},f?.path);
     W.event(server,"Saved "+data.get("path").trim());
@@ -421,7 +432,7 @@ function createServer() {
 function act(action,value) {
   const s=active();
   const f=s?.files.find(item=>item.path===value);
-  if(action==="cancel") { $("modal").close();return; }
+  if(action==="cancel") { if($("modal-submit").disabled) return; $("modal").close();return; }
   if(action==="create-server") { createServer();return; }
   if(action==="retry-save") { saveCloud();return; }
   if(action==="reload") { location.reload();return; }
@@ -436,6 +447,8 @@ function act(action,value) {
     flash("Workspace created. Ready for your project files.");return;
   }
   if(!s) return;
+  if(action.startsWith("fm-")) return FileManager.action(action,value,s);
+  if(action.startsWith("gh-")) return GitHubPanel.action(action,s).catch(error=>flash(error.message));
   if(action==="vps-run" || action==="vps-stop") {controlVps(action==="vps-run"?"run":"stop");return;}
   if(vpsEnabled && action==="deploy") {location.hash="console";return;}
   if(["start","stop","restart","backup"].includes(action) && settingsDirty && !confirm("Discard unsaved configuration changes?")) return;
@@ -446,7 +459,7 @@ function act(action,value) {
       commit(server=>{server.entry=value;W.event(server,"Set startup file to "+value);});
       flash(s.started?"Startup file saved. Restart to use it.":"Startup file saved.");break;
     case "select-server": case "server-files": case "server-console":
-      directory="";filter="";
+      directory="";filter="";FileManager.clear();
       if(state.selected!==value) commit((_,next)=>next.selected=value);
       location.hash=action==="server-console"?"console":action==="server-files"?"files":"overview";break;
     case "deploy":
@@ -459,16 +472,6 @@ function act(action,value) {
     case "upload": $("upload").click();break;
     case "upload-folder": $("folder-upload").click();break;
     case "download": download(f);break;
-    case "rename-file":
-      showModal("Rename file",field("File path","path",value,"required maxlength=\"160\""),"Rename",data=>commit(server=>{
-        W.storeFile(server,{...f,path:data.get("path")},value);
-        W.event(server,"Renamed "+value+" to "+data.get("path").trim());
-      }));break;
-    case "delete-file":
-      if(value===s.entry && W.runnable(s.runtime,f)) throw Error("Set another file as startup before deleting this one.");
-      confirmAction("Delete file?",value+" will be removed from this server.","Delete file", server=>{
-        server.files=server.files.filter(item=>item.path!==value);W.event(server,"Deleted "+value);
-      });break;
     case "edit-env": case "new-env": envModal(s,value);break;
     case "remove-env":
       confirmAction("Remove variable?",value+" will be removed.","Remove",server=>{
@@ -491,10 +494,11 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("input",e=>{
   if(e.target.closest("#settings")) settingsDirty=true;
-  if(e.target.id==="file-search"){filter=e.target.value;$("file-list").innerHTML=fileRows(active());}
+  if(e.target.id==="file-search"){filter=e.target.value;$("file-list").innerHTML=FileManager.rows(active());}
   if(e.target.id==="env-reveal") $("modal-form").elements.value.type=e.target.checked?"text":"password";
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="select-all" || e.target.hasAttribute("data-file-select")) return FileManager.select(e.target,active());
   if(e.target.id==="startup-file") {
     try { act("set-entry",e.target.value); $("startup-file")?.focus(); }
     catch(error) { paint();flash(error.message); }
@@ -607,7 +611,6 @@ async function initialize() {
     cloud=session.workspaceStorage==="mongodb";
     vpsEnabled=session.vpsTest===true;
     accessReason=session.runtimeAccess;
-    if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project.";
   }
   storageKey="mzhost:sandbox:v1:"+owner;
   if(cloud) {
@@ -616,7 +619,7 @@ async function initialize() {
     const saved=await response.json();
     revision=saved.revision;state=saved.workspace;
     acknowledged=state;persistent=false;
-    document.querySelector(".sandbox-tag").textContent="Online preview";
+    document.querySelector(".sandbox-tag").textContent="Workspace";
   } else {
     let cached;
     try { cached=sessionStorage.getItem(storageKey);sessionStorage.setItem(storageKey+":check","1");sessionStorage.removeItem(storageKey+":check"); }
@@ -627,9 +630,10 @@ async function initialize() {
   }
   if(owner==="demo" && !location.hash) view="overview";
   paint();
+  if(cloud) setInterval(checkWorkspace,15000);
   setInterval(()=>{
     if(vpsEnabled) refreshVps();
-    if(view==="overview"&&active()&&!document.hidden&&!$("modal").open){
+    if(!signedIn&&view==="overview"&&active()&&!document.hidden&&!$("modal").open){
       const s=active(),tick=Math.floor(Date.now()/5000),values=$("content").querySelectorAll(".stat strong");
       if(values.length){values[0].textContent=sample(s,tick)+" MB";values[1].textContent=(s.started?(2+Math.abs(Math.sin(tick*.4))*2).toFixed(1):0)+"%";draw(s);}
     }

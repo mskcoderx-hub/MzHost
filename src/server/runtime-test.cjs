@@ -13,7 +13,8 @@ function project(server,entry=server.entry) {
   for(const f of server.files) {
     if(typeof f.path!=="string" || !f.path.split("/").every(p=>/^[a-zA-Z0-9_. -]{1,80}$/.test(p) && p!=="." && p!=="..")) throw Error("Rename files to use relative project paths.");
   }
-  return {image,entry,files:server.files.map(f=>f.binary?{path:f.path,data:f.data}:{path:f.path,text:f.text})};
+  if(server.folders) require("../public/project-tree.js").validate(server);
+  return {image,entry,...(server.folders?.length?{folders:server.folders}:{}),files:server.files.map(f=>f.binary?{path:f.path,data:f.data}:{path:f.path,text:f.text})};
 }
 function status(doc) {
   const live=doc?.seen && Date.now()-doc.seen.getTime()<90000;

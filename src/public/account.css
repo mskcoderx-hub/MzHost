@@ -35,3 +35,5 @@
 .provider-button small { margin-left:auto; font-size:.71rem; font-weight:500; color:#555; }
 .oauth-options a:hover,.oauth-options a:focus-visible { border-color:#5865f2; background:#f7f7ff; }
 .oauth-options button.provider-button:disabled { opacity:1; color:#686868; background:#f6f6f4; cursor:default; }
+
+.github-mark {display:grid;place-items:center;width:24px;height:24px;border-radius:6px;background:#242423;color:#fff;font:600 12px var(--mono)}

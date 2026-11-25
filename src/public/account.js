@@ -3,6 +3,7 @@ const offline = location.protocol === "file:";
 const requested=new URLSearchParams(location.search).get("next")||"";
 const next=/^\/billing(?:\?plan=(?:Free|Starter|Standard|Plus))?$/.test(requested)?requested:"./dashboard";
 if(next.startsWith("/billing")) el("discord-login").href="/api/discord-login?next=/billing";
+if(next.startsWith("/billing")) el("github-login").href="/api/github-login?next=/billing";
 let email = "";
 let busy = false;
 let checking = !offline;

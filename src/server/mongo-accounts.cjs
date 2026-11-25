@@ -13,6 +13,8 @@ async function connect(secure) {
     const audit=db.collection("audit_events");
     const tests=db.collection("vps_test_worker");
     await Promise.all([sessions,limits,pending,audit,db.collection("admin_sessions"),db.collection("oauth_states")].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
+    await users.createIndex({githubId:1},{unique:true,partialFilterExpression:{githubId:{$type:"number"}}});
+    await db.collection("github_links").createIndex({repoId:1,installation:1,branch:1,auto:1});
     await users.createIndex({discordId:1},{unique:true,partialFilterExpression:{discordId:{$type:"string"}}});
     await db.collection("hosting_orders").createIndex({owner:1,created:-1});
     await pending.createIndex({digest:1},{unique:true});
@@ -120,6 +122,9 @@ async function connect(secure) {
       async workspace(email) {
         return await workspaces.findOne({_id:email},{projection:{_id:0}}) || {revision:0,workspace:{servers:[],selected:""}};
       },
+      async workspaceRevision(email) {
+        return (await workspaces.findOne({_id:email},{projection:{revision:1}}))?.revision || 0;
+      },
       async save(email,revision,workspace) {
         try {
           return await client.withSession(session=>session.withTransaction(async()=>{
@@ -130,6 +135,7 @@ async function connect(secure) {
             const after=workspace.servers;
             const changed=(from,to)=>from.filter(s=>!to.some(other=>other.id===s.id));
             const removed=changed(before,after);
+            if(removed.length) await db.collection("github_links").deleteMany({owner:email,serverId:{$in:removed.map(s=>s.id)}},{session});
             if(removed.length) await tests.updateOne({owner:email,serverId:{$in:removed.map(s=>s.id)},desired:"run"},{
               $set:{desired:"stop",state:"queued",generation:require("node:crypto").randomUUID(),project:null},$unset:{input:""}
             },{session});

@@ -16,11 +16,11 @@ async function admin({db,secure,store,res,req,body,send}) {
   const now=Date.now(),cookie="; Path=/api; HttpOnly; SameSite=Strict"+(secure?"; Secure":"");
   const valid=key && (sessions?await sessions.findOne({_id:key,expires:{$gt:new Date()}}):localSessions.get(key)>now);
   if(req.method==="POST" && typeof body?.password==="string") {
-    const login=local?"1":process.env.ADMIN_USERNAME,pass=local?"1":process.env.ADMIN_PASSWORD;
-    if(!login || !pass || (!local && (pass.length<16 || !sessions))) return send(503,{message:"Configure the production admin credentials."});
+    const auth=require("./admin-auth.cjs").credentials(local);
+    if(!auth || (!local && !sessions)) return send(503,{message:"Admin sign-in is unavailable. The project owner must finish production setup."});
     const ip=req.headers["x-vercel-forwarded-for"]||req.socket?.remoteAddress||"local";
     if(!await store.allowAttempt("admin:"+digest(String(ip)).toString("hex"),now,6,900000)) return send(429,{message:"Try again in 15 minutes."});
-    if(!timingSafeEqual(digest(body.password),digest(pass)) || body.username!==login) return send(401,{message:"Incorrect admin credentials."});
+    if(!await auth.check(body.password) || body.username!==auth.username) return send(401,{message:"Incorrect admin credentials."});
     const value=randomBytes(32).toString("hex"),id=digest(value).toString("hex");
     if(sessions) await sessions.insertOne({_id:id,expires:new Date(now+1800000)});
     else {for(const [k,v] of localSessions) if(v<=now) localSessions.delete(k);localSessions.set(id,now+1800000);}
@@ -64,9 +64,11 @@ async function publishStatus(db) {
     return {state:"failed",message:reasons[error.status] || (error.message?.includes("APP_ORIGIN")?"Set APP_ORIGIN to the HTTPS website origin.":"Could not publish the Discord status panel. Check the status channel, bot credentials and APP_ORIGIN.")};
   }
 }
-const actions=["status","reviews","admin","billing","payments-ipn","discord-login","discord-callback","sync-status"];
+const actions=["archive","github-login","github-callback","github","github-hook","status","reviews","admin","billing","payments-ipn","discord-login","discord-callback","sync-status"];
 async function service(ctx) {
   const {action,db,req,send,readBody,sameOrigin,store,oldToken}=ctx;
+  if(action==="archive") return require("./archives.cjs").archiveRequest(ctx);
+  if(action.startsWith("github")) return require("./github.cjs").github(ctx);
   if(action==="sync-status") {
     const secret=process.env.CRON_SECRET;
     if(req.method!=="GET" || !db || !secret || !timingSafeEqual(digest(req.headers.authorization||""),digest("Bearer "+secret))) return send(403,{});

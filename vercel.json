@@ -1,5 +1,6 @@
 {
   "framework": null,
+  "functions": {"api/preview.js":{"includeFiles":"node_modules/node-unrar-js/**/*","maxDuration":60},"api/github-hook.mjs":{"maxDuration":60}},
   "cleanUrls": true,
   "redirects": [
     {
@@ -45,7 +46,7 @@
   ],
   "rewrites": [
     {
-      "source": "/api/:action(session|login|register|verify|logout|workspace|runtime|status|reviews|admin|billing|payments-ipn|discord-login|discord-callback|sync-status)",
+      "source": "/api/:action(session|login|register|verify|logout|workspace|runtime|status|reviews|admin|billing|payments-ipn|archive|github-login|github-callback|github|discord-login|discord-callback|sync-status)",
       "destination": "/api/preview?action=:action"
     }
   ]

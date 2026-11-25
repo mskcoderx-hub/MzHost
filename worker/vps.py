@@ -128,6 +128,14 @@ def launch(project):
     project_folder = tempfile.TemporaryDirectory(prefix="mzhost-project-")
     folder = project_folder.name
     try:
+        folders = project.get("folders", [])
+        if not isinstance(folders, list) or len(folders) > 160:
+            raise ValueError("Invalid project folders")
+        for relative in folders:
+            parts = relative.split("/")
+            if len(relative) > 160 or any(p in {".", ".."} or not re.fullmatch(r"[\w. -]{1,80}", p, re.ASCII) for p in parts):
+                raise ValueError("Invalid project folder")
+            Path(folder).joinpath(*parts).mkdir(parents=True, exist_ok=True)
         for item in files:
             parts = item["path"].split("/")
             if any(p in {".", ".."} or not re.fullmatch(r"[\w. -]{1,80}", p, re.ASCII) for p in parts):

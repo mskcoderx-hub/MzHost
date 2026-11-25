@@ -6,6 +6,7 @@
   <link rel="icon" href="./images/MzHostLogo.png">
   <link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./dashboard.css">
   <script src="./plans.js" defer></script>
+  <script src="./project-tree.js" defer></script><script src="./file-manager.js" defer></script><script src="./github-panel.js" defer></script>
   <script src="./workspace.js" defer></script><script src="./dashboard.js" defer></script>
   <script defer src="./file-links.js"></script>
   <script defer src="./common.js"></script>
@@ -15,21 +16,21 @@
 <header class="mast">
   <a class="brand" href="./" aria-label="MzHost home"><span class="brand-icon"></span>MzHost</a>
   <span class="mast-divider"></span><span class="mast-title">Control panel</span>
-  <div class="mast-right"><span class="sandbox-tag">Local sandbox</span><a href="./billing">Billing</a><a href="./account#settings">Account settings</a></div>
+  <div class="mast-right"><span class="sandbox-tag">Sandbox</span><a href="./billing">Billing</a><a href="./account#settings">Account settings</a></div>
 </header>
 <div class="shell">
   <aside class="rail">
     <label class="section-label" for="server-switch">Workspace</label>
     <select id="server-switch" aria-label="Select server"></select>
     <button class="add-server" data-action="create-server">+ New server</button>
-    <p class="section-label nav-label">Server management</p>
-    <nav id="views" aria-label="Server management">
-      <a href="#servers">My servers</a><a href="#overview">Overview</a><a href="#console">Console</a><a href="#files">Files</a>
-      <a href="#deployments">Deployments</a>
-      <a href="#environment">Environment</a><a href="#configuration">Configuration</a>
-      <a href="#backups">Backups</a><a href="#activity">Activity</a>
+    <p class="section-label nav-label">Navigation</p>
+    <nav id="views" aria-label="Workspace navigation">
+      <a href="#servers"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4h14v5H3z M3 12h14v5H3z M6 6.5h1 M6 14.5h1"/></svg>My servers</a><a href="#overview"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3 3h6v7H3z M12 3h5v4h-5z M3 13h6v4H3z M12 10h5v7h-5z"/></svg>Overview</a><a href="#console"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2 3h16v14H2z M5 7l3 3-3 3 M10 13h4"/></svg>Console</a><a href="#files"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2 5h6l2 2h8v9H2z"/></svg>Files</a>
+      <a href="#deployments"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M5 4v12 M5 12c5 0 8-2 8-7 M3 4h4v3H3z M11 3h4v4h-4z"/></svg>Deployments</a>
+      <a href="#environment"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M7 4H5v4l-2 2 2 2v4h2 M13 4h2v4l2 2-2 2v4h-2"/></svg>Environment</a><a href="#configuration"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3 6h8 M14 6h3 M3 14h3 M9 14h8 M11 3v6 M7 11v6"/></svg>Configuration</a>
+      <a href="#backups"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4h14v4H3z M4 8v9h12V8 M8 11h4"/></svg>Backups</a><a href="#activity"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M2 11h4l2-7 4 13 2-6h4"/></svg>Activity</a>
     </nav>
-    <p class="rail-note">Server actions are simulated. Use sample files and test values here.</p>
+    <a class="rail-note" href="./status">System status ↗</a>
   </aside>
   <main class="desk" id="panel" tabindex="-1">
     <div id="context"></div><div id="content"></div>
