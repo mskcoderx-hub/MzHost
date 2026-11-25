@@ -24,6 +24,10 @@ const files = new Map([
 ]);
 
 for(const page of ["billing","status","admin"]) files.set("/"+page,[page+".html","text/html; charset=utf-8"]);
+for(const name of ["discord-mark","google-mark","community-avatar"]) {
+  const asset="images/"+name+".png";
+  files.set("/"+asset,[asset,"image/png"]);
+}
 for(const asset of ["common.js","service-pages.js","plans.js","service-pages.css","pricing.css"]) files.set("/"+asset,[asset,asset.endsWith(".js")?"text/javascript; charset=utf-8":"text/css"]);
 const root = path.resolve(__dirname, "../..");
 const envFile = path.join(root, ".env");

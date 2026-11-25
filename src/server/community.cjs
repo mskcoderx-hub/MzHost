@@ -12,12 +12,13 @@ const emoji={
 };
 const minute=60000;
 const snowflake=value=>typeof value==="string" && /^\d{17,20}$/.test(value);
-const configured=()=>Boolean(process.env.DISCORD_BOT_TOKEN && snowflake(process.env.DISCORD_CLIENT_ID));
+const clientId=()=>process.env.DISCORD_CLIENT_ID?.trim();
+const configured=()=>Boolean(process.env.DISCORD_BOT_TOKEN?.trim() && snowflake(clientId()));
 
 async function discord(channel,suffix="",method="GET",payload) {
   const response=await fetch("https://discord.com/api/v10/channels/"+channel+"/messages"+suffix,{
     method,redirect:"error",signal:AbortSignal.timeout(4500),
-    headers:{Authorization:"Bot "+process.env.DISCORD_BOT_TOKEN,"Content-Type":"application/json"},
+    headers:{Authorization:"Bot "+process.env.DISCORD_BOT_TOKEN.trim(),"Content-Type":"application/json"},
     body:payload && JSON.stringify(payload)
   });
   if(!response.ok) throw Object.assign(Error("Discord returned HTTP "+response.status),{status:response.status});
@@ -26,19 +27,35 @@ async function discord(channel,suffix="",method="GET",payload) {
 
 // MzBot posts one Components V2 text display, containing the ticket summary and optional feedback.
 function displayText(message) {
-  if(message.webhook_id || !message.author?.bot || message.author.id!==process.env.DISCORD_CLIENT_ID) return "";
+  if(message.webhook_id || !message.author?.bot || message.author.id!==clientId()) return "";
   const display=message.components?.find(c=>c.type===17)?.components?.find(c=>c.type===10);
   return typeof display?.content==="string"?display.content:"";
 }
 function reviewFrom(message) {
-  if(!snowflake(message.id) || message.channel_id!==reviewsChannel) return;
-  const text=displayText(message);
-  const match=/^### [^\n]* MzHost - Support Feedback\n\n\*\*Ticket:\*\* #\d+\n\*\*Customer:\*\* <@!?\d+>\n\*\*Assigned staff:\*\* (?:Unassigned|<@!?\d+>)\n\*\*Rating:\*\* ([45])\/5[^\n]*\n\*\*Feedback:\*\* ([\s\S]+)$/u.exec(text);
-  if(!match) return;
-  const feedback=match[2].trim();
+  if(!snowflake(message.id) || (message.channel_id && message.channel_id!==reviewsChannel) ||
+    message.webhook_id || !message.author?.bot || message.author.id!==clientId()) return;
+  const embed=message.embeds?.find(e=>/MzHost\s*[-–—]\s*Support Feedback/i.test(e.title||""));
+  const text=(displayText(message) || (embed && [embed.title,embed.description,
+    ...(embed.fields||[]).map(f=>f.name.replace(/[:*]+$/,"")+": "+f.value)].filter(Boolean).join("\n")) || "").replace(/\r/g,"");
+  const [header,...lines]=text.split("\n");
+  if(!/\bMzHost\s*[-–—]\s*Support Feedback\s*$/i.test(header)) return;
+  const start=lines.findIndex(line=>/^\s*\**Feedback\**:\**\s*/i.test(line));
+  if(start<0) return;
+  const fields=lines.slice(0,start).join("\n").replace(/\*\*/g,"");
+  const rating=/^Rating:\s*([0-5])\s*\/\s*5\b/im.exec(fields);
+  if(!rating || Number(rating[1])<4) return;
+  const feedback=lines.slice(start).join("\n").replace(/^\s*\**Feedback\**:\**\s*/i,"").trim();
   // Private contact details and Discord mentions from a support conversation do not belong on the homepage.
   if(!feedback || /<[@#]|https?:\/\/|\S+@\S+\.\S+|\b(?:\d[ -]?){10,}\b/i.test(feedback)) return;
-  return {id:message.id,name:"MzHost community member",stars:Number(match[1]),text:feedback.replace(/\s+/g," ").slice(0,360)};
+  const customer=/^Customer:\s*<@!?(\d+)>/im.exec(fields)?.[1];
+  const member=message.mentions?.find(user=>user.id===customer);
+  const result={id:message.id,name:member?.global_name || member?.username || "MzHost community member",stars:Number(rating[1]),text:feedback.replace(/\s+/g," ").slice(0,360)};
+  if(snowflake(customer) && /^(a_)?[a-f0-9]{32}$/.test(member?.avatar||""))
+    result.avatar="https://cdn.discordapp.com/avatars/"+customer+"/"+member.avatar+".png?size=96";
+  const photo=message.attachments?.find(file=>/^image\/(?:jpeg|png|webp)$/.test(file.content_type) &&
+    typeof file.url==="string" && file.url.startsWith("https://cdn.discordapp.com/attachments/"+reviewsChannel+"/"));
+  if(photo) result.image=photo.url;
+  return result;
 }
 
 async function lock(collection,id,freshBefore) {
@@ -53,21 +70,34 @@ function priorReviews(doc) {
   return doc?.updated && +doc.updated>Date.now()-24*60*minute ? doc.items || [] : [];
 }
 async function reviews(db) {
-  if(!configured()) return [];
+  if(!configured()) throw Error("Discord reviews need bot credentials.");
   const collection=db.collection("community_cache");
   const cached=await collection.findOne({_id:"reviews"});
   if(cached?.updated && +cached.updated>Date.now()-5*minute) return cached.items || [];
   const claim=await lock(collection,"reviews",new Date(Date.now()-5*minute));
-  if(!claim) return priorReviews(cached);
+  if(!claim) {
+    if(cached?.updated) return priorReviews(cached);
+    throw Error("Review refresh in progress.");
+  }
   const owned={_id:"reviews",lease:claim.lease};
   try {
-    const messages=await discord(reviewsChannel,"?limit=100");
-    const items=messages.map(reviewFrom).filter(Boolean).slice(0,6);
+    const items=[];
+    let before="";
+    for(let page=0;page<3 && items.length<6;page++) {
+      const messages=await discord(reviewsChannel,"?limit=100"+before);
+      items.push(...messages.map(reviewFrom).filter(Boolean).slice(0,6-items.length));
+      if(messages.length<100 || !snowflake(messages.at(-1)?.id)) break;
+      before="&before="+messages.at(-1).id;
+    }
     await collection.updateOne(owned,{$set:{items,updated:new Date()},$unset:{lease:"",until:""}});
     return items;
-  } catch {
+  } catch(error) {
     // Keep the short lease as a retry delay when Discord is unavailable.
-    return priorReviews(claim);
+    const previous=priorReviews(claim);
+    console.warn("Discord reviews unavailable",error.status || "connection");
+    if(previous.length) return previous;
+    const reasons={401:"Discord rejected DISCORD_BOT_TOKEN.",403:"Give MzBot View Channel and Read Message History in the ratings channel.",404:"MzBot cannot find the ratings channel.",429:"Discord rate-limited the ratings feed. Retry shortly."};
+    throw Error(reasons[error.status] || "Discord reviews are unavailable.");
   }
 }
 

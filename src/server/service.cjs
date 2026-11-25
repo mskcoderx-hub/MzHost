@@ -35,7 +35,13 @@ async function admin({db,secure,store,res,req,body,send}) {
     }
     if(body?.action==="sync-status" && db) {
       const result=await publishStatus(db);
-      return ["synced","unchanged"].includes(result.state)?send(200,result):send(503,{message:result.state==="busy"?"A status update is already in progress.":"Configure the Discord bot credentials first."});
+      return ["synced","unchanged"].includes(result.state)?send(200,result):send(503,{message:result.message || "A status update is already in progress."});
+    }
+    if(body?.action==="check-reviews" && db) {
+      try {
+        const items=await require("./community.cjs").reviews(db);
+        return send(200,{count:items.length});
+      } catch(error) {return send(503,{message:error.message});}
     }
     return send(400,{message:"This action requires the connected database."});
   }
@@ -43,13 +49,20 @@ async function admin({db,secure,store,res,req,body,send}) {
   const [accounts,activePlans,workers,orders]=await Promise.all([
     db.collection("users").countDocuments(),db.collection("users").countDocuments({$or:[{plan:"Free"},{planExpires:{$gt:new Date()}}]}),
     db.collection("vps_test_worker").countDocuments({seen:{$gte:new Date(now-90000)}}),
-    db.collection("hosting_orders").find({},{projection:{_id:0,plan:1,status:1,amount:1,created:1}}).sort({created:-1}).limit(30).toArray()
+    db.collection("hosting_orders").find({},{projection:{_id:0,plan:1,status:1,amount:1,created:1,sandbox:1,providerAmount:1}}).sort({created:-1}).limit(30).toArray()
   ]);
   return send(200,{accounts,activePlans,workers,orders});
 }
 async function publishStatus(db) {
   const {website,database,worker,updatedAt}=await status(db);
-  return require("./community.cjs").syncStatus(db,{updatedAt,services:[["Website",website],["Database",database],["Hosting worker",worker]].map(([name,value])=>({name,status:value==="online"?"operational":"offline"}))});
+  try {
+    const result=await require("./community.cjs").syncStatus(db,{updatedAt,services:[["Website",website],["Database",database],["Hosting worker",worker]].map(([name,value])=>({name,status:value==="online"?"operational":"offline"}))});
+    if(result.state==="unconfigured") result.message="Set DISCORD_BOT_TOKEN and the numeric DISCORD_CLIENT_ID for MzBot in Vercel Production.";
+    return result;
+  } catch(error) {
+    const reasons={401:"Discord rejected DISCORD_BOT_TOKEN.",403:"Give MzBot View Channel, Read Message History and Send Messages in the status channel.",404:"MzBot cannot find the configured status channel.",429:"Discord rate-limited this update. Retry shortly."};
+    return {state:"failed",message:reasons[error.status] || (error.message?.includes("APP_ORIGIN")?"Set APP_ORIGIN to the HTTPS website origin.":"Could not publish the Discord status panel. Check the status channel, bot credentials and APP_ORIGIN.")};
+  }
 }
 const actions=["status","reviews","admin","billing","payments-ipn","discord-login","discord-callback","sync-status"];
 async function service(ctx) {
@@ -57,13 +70,15 @@ async function service(ctx) {
   if(action==="sync-status") {
     const secret=process.env.CRON_SECRET;
     if(req.method!=="GET" || !db || !secret || !timingSafeEqual(digest(req.headers.authorization||""),digest("Bearer "+secret))) return send(403,{});
-    return send(200,await publishStatus(db));
+    const result=await publishStatus(db);
+    return send(["failed","unconfigured"].includes(result.state)?503:200,result);
   }
   if(action==="discord-login" || action==="discord-callback") return discord(ctx);
   if(action==="status" || action==="reviews") {
     if(req.method!=="GET") return send(405,{});
     if(action==="status") return send(200,await status(db));
-    return send(200,{reviews:db?await require("./community.cjs").reviews(db):[]});
+    if(db) try {return send(200,{reviews:await require("./community.cjs").reviews(db)});} catch {}
+    return send(503,{message:"The Discord review feed is temporarily unavailable."});
   }
   if(action==="payments-ipn") {
     if(req.method!=="POST" || !db) return send(405,{});

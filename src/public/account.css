@@ -28,3 +28,10 @@
   .account-art { display: none; }
 }
 .account-page [hidden] {display:none !important;}
+.oauth-divider { display:flex; align-items:center; gap:12px; margin:20px 0 13px; color:var(--muted); font-size:13px; }
+.oauth-divider::before,.oauth-divider::after { content:""; height:1px; flex:1; background:var(--line); }
+.oauth-options .provider-button { display:flex; align-items:center; gap:12px; width:100%; min-height:49px; padding:10px 15px; border-radius:7px; border:1px solid #ccc; background:#fff; color:#141414; line-height:1.3; font-family:inherit; font-size:.94rem; font-weight:600; text-decoration:none; }
+.provider-button i { margin-left:auto; width:8px; height:8px; border:solid currentColor; border-width:1.5px 1.5px 0 0; transform:rotate(45deg); }
+.provider-button small { margin-left:auto; font-size:.71rem; font-weight:500; color:#555; }
+.oauth-options a:hover,.oauth-options a:focus-visible { border-color:#5865f2; background:#f7f7ff; }
+.oauth-options button.provider-button:disabled { opacity:1; color:#686868; background:#f6f6f4; cursor:default; }

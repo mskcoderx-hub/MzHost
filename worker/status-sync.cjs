@@ -18,7 +18,8 @@ async function main() {
       const response=await fetch(new URL("/api/sync-status",origin),{method:"GET",redirect:"error",
         headers:{Authorization:"Bearer "+secret},signal:AbortSignal.any([shutdown.signal,AbortSignal.timeout(20000)])});
       if(!response.ok) {
-        result="Status update failed (HTTP "+response.status+").";
+        const details=await response.json().catch(()=>({}));
+        result="Status update failed (HTTP "+response.status+"). "+(details.message || (response.status===403?"Check CRON_SECRET on both hosts.":"Retrying in two minutes."));
       } else {
         const {state}=await response.json();
         switch(state) {

@@ -17,9 +17,9 @@ In Vercel, open the MzHost project's **Settings → Environment Variables**. Use
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Production admin username and unique password of at least 16 characters. Local loopback preview supports `1` / `1`. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Existing Resend verification configuration. |
 
-**Discord.** Add the exact redirect URI `https://mzhost.vercel.app/api/discord-callback` under OAuth2 redirects. The login requests identify and verified email. Enable View Channel and Read Message History in ratings channel `1574753304016068759`. Grant those permissions plus Send Messages in status channel `1574573212975767684`. Use **Sync Discord status** in `/admin` to post the first message. Set up the [status updater](status-sync.md) for subsequent checks. The public status page is at `/status`.
+**Discord.** Add the exact redirect URI `https://mzhost.vercel.app/api/discord-callback` under OAuth2 redirects. The login requests identify and verified email. Enable View Channel and Read Message History in ratings channel `1574753304016068759`. Grant those permissions plus Send Messages in status channel `1574573212975767684`. Use **Sync Discord status** in `/admin` to post the first message. Vercel runs a daily production check. For two-minute updates also run the [status updater](status-sync.md). The public status page is at `/status`.
 
-**NOWPayments.** Configure the merchant payout wallet and IPN secret. The invoice includes the callback `https://mzhost.vercel.app/api/payments-ipn`. The customer returns to `/billing` to check payment status. A signed, fully paid, finished invoice grants a 30-day term. Duplicate notifications are idempotent. Sandbox settlement records a test order. Check the minimum transaction amount for the currencies you offer before advertising small monthly invoices.
+**NOWPayments.** Configure the merchant payout wallet and IPN secret. The invoice includes the callback `https://mzhost.vercel.app/api/payments-ipn`. The customer returns to `/billing` to check payment status. A signed, fully paid, finished invoice grants a 30-day term. Duplicate notifications are idempotent. Sandbox uses a simulated $100 BTC payment through the sandbox API with the success test case. The signed callback records a test order without granting hosting credit. Check the minimum transaction amount for the currencies you offer before advertising small monthly invoices.
 
 **Deploy and verify.** From Windows PowerShell in the repository:
 
@@ -34,5 +34,5 @@ Once Vercel completes deployment, use the [worker installation steps](README.md)
 
 1. Open the site in a fresh browser profile and accept the cookie notice. Sign in with Discord or email. Verify that the homepage offers Dashboard and that Account settings can sign out.
 2. Choose Free in Billing, create a project, run a script that writes to `/data`, and verify its data survives a restart. With two verified accounts, check that each sees only its own console output. Start a second worker slot to test concurrent hosting.
-3. Use a sandbox invoice and inspect its status in Billing and Admin. Confirm that sandbox callbacks leave live entitlements unchanged. Complete a controlled live purchase only after storage, worker capacity and payment minimums are verified.
+3. Use Test checkout and refresh payment history to inspect its status in Billing and Admin. Confirm that sandbox callbacks leave live entitlements unchanged. Complete a controlled live purchase only after storage, worker capacity and payment minimums are verified.
 4. Check the status page, the Discord panel and selected ratings. Google login and rewarded ads await their provider integrations.

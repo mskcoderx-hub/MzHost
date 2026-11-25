@@ -35,6 +35,18 @@ test("selected Discord support feedback excludes low ratings, ticket data and un
   assert.deepEqual(list,[{id:"1574753304016068760",name:"MzHost community member",stars:4,text:"Quick help."}]);
   assert.deepEqual(await reviews(db),list);assert.equal(reads,1);
 });
+test("vouches in Discord embeds use the customer's avatar and an attached photo",async t=>{
+  const bot="123456789012345678",id="222222222222222222",hash="a".repeat(32);
+  process.env.DISCORD_BOT_TOKEN="test";process.env.DISCORD_CLIENT_ID=bot;
+  const image="https://cdn.discordapp.com/attachments/1574753304016068759/323456789012345678/review.png";
+  const msg={id:"1574753304016068761",author:{bot:true,id:bot},mentions:[{id,username:"KenzDC",avatar:hash}],
+    embeds:[{title:"MzHost — Support Feedback",fields:[{name:"Customer",value:"<@"+id+">"},{name:"Rating",value:"5/5"},{name:"Feedback",value:"Quick support"}]}],
+    attachments:[{content_type:"image/png",url:image}]};
+  t.mock.method(global,"fetch",async()=>Response.json([msg]));
+  const [review]=await reviews(database());
+  assert.equal(review.name,"KenzDC");assert.equal(review.image,image);
+  assert.equal(review.avatar,"https://cdn.discordapp.com/avatars/"+id+"/"+hash+".png?size=96");
+});
 test("the Discord status panel is posted once and edited when service state changes",async t=>{
   process.env.DISCORD_BOT_TOKEN="unit-test";process.env.DISCORD_CLIENT_ID="123456789012345678";
   process.env.APP_ORIGIN="https://mzhost.example";

@@ -1,5 +1,7 @@
 # Discord status updater
 
+Vercel production schedules a daily sync at 06:00 UTC with `CRON_SECRET`. To publish immediately, sign into `/admin` and choose **Sync status**. The optional companion below updates the same message every two minutes.
+
 Run this companion on the always-on machine that hosts MzBot, using Node.js 22 or newer. It sends an authenticated request to the MzHost website every two minutes. The website checks service health and updates one bot message in channel `1574573212975767684`. The companion prints a line when the result changes.
 
 1. On Vercel, configure `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN`, `APP_ORIGIN` and a random `CRON_SECRET`. Set `APP_ORIGIN` to the HTTPS website origin. Give the bot **View Channel**, **Read Message History** and **Send Messages** in the status channel and read access in the ratings channel.

@@ -36,17 +36,13 @@ document.querySelectorAll("[data-open]").forEach(button => {
   });
 });
 
-async function loadFeaturedReviews() {
-  const response = await fetch("/api/reviews");
-  if (!response.ok) throw Error("Reviews unavailable");
-  const data = await response.json();
+function showReviews(reviews) {
   const list = document.getElementById("featured-reviews");
   const caption = document.getElementById("review-caption");
-  const reviews = Array.isArray(data.reviews) ? data.reviews : [];
   const featured = reviews.filter(review =>
     review && [4, 5].includes(review.stars) && typeof review.text === "string" && review.text.trim()
   ).slice(0, 6);
-  if (!featured.length) return;
+  list.replaceChildren();
 
   for (const review of featured) {
     const figure = document.createElement("figure");
@@ -55,12 +51,32 @@ async function loadFeaturedReviews() {
     const name = document.createElement("figcaption");
     score.textContent = review.stars + " / 5";
     quote.textContent = review.text.trim();
-    name.textContent = typeof review.name === "string" && review.name.trim() ? review.name : "Discord member";
+    const author = document.createElement("span");
+    author.textContent = review.name || "Discord member";
+    const avatar = document.createElement("img");
+    const fallback = "./images/community-avatar.png";
+    avatar.alt = ""; avatar.width = 36; avatar.height = 36;
+    avatar.src = review.avatar?.startsWith("https://cdn.discordapp.com/avatars/") ? review.avatar : fallback;
+    avatar.addEventListener("error", () => { avatar.src = fallback; }, {once:true});
+    name.append(avatar,author);
     figure.append(score, quote, name);
+    if (review.image?.startsWith("https://cdn.discordapp.com/attachments/1574753304016068759/")) {
+      const image = document.createElement("img");
+      image.className = "review-photo"; image.src = review.image; image.loading = "lazy"; image.alt = "Image shared with this review";
+      image.addEventListener("error", () => image.remove(), {once:true});
+      quote.after(image);
+    }
     list.append(figure);
   }
-  caption.textContent = "Selected 4- and 5-star reviews from our Discord community.";
-  list.hidden = false;
+  caption.textContent = featured.length ? "Selected 4- and 5-star reviews from our Discord community." : "No featured Discord reviews yet.";
+  list.hidden = !featured.length;
+}
+
+async function loadFeaturedReviews() {
+  const response = await fetch("/api/reviews");
+  if (!response.ok) return;
+  const data = await response.json();
+  if (Array.isArray(data.reviews)) showReviews(data.reviews);
 }
 
 async function updateAccountLinks() {
@@ -75,9 +91,13 @@ async function updateAccountLinks() {
   primary.textContent = session.email ? "Dashboard" : "Create account";
 }
 
+// Published feedback supplied by MzHost for offline previews and Discord outages.
+showReviews([
+  {name:"MSK",stars:5,text:"very good website"},
+  {name:"KenzDC",stars:5,text:"ngl thats the best hostin i ever seen in my fkn life"},
+  {name:"MSK",stars:5,text:"W support"}
+]);
 if (location.protocol !== "file:") {
-  loadFeaturedReviews().catch(() => {
-    document.getElementById("review-caption").textContent = "Discord reviews are temporarily unavailable.";
-  });
+  loadFeaturedReviews().catch(() => {});
   window.addEventListener("pageshow", () => updateAccountLinks().catch(() => {}));
 }

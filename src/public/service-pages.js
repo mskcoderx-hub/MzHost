@@ -46,7 +46,8 @@
     const body = table.createTBody();
     for (const order of orders) {
       const row = body.insertRow();
-      const amount = order.amount != null && Number.isFinite(Number(order.amount)) ? currency.format(order.amount) : "Unavailable";
+      const displayedAmount = order.providerAmount ?? order.amount;
+      const amount = displayedAmount != null && Number.isFinite(Number(displayedAmount)) ? currency.format(displayedAmount)+(order.sandbox?" (test)":"") : "Unavailable";
       for (const value of [date(order.created),order.plan,amount,order.status]) row.insertCell().textContent = value;
     }
     wrapper.append(table);
@@ -82,6 +83,7 @@
         const current = name === result.plan;
         const button = element("button", current ? (name==="Free"?"Current plan":"Renew for 30 days") : name === "Free" ? "Choose Free" : "Pay " + currency.format(plan.price), name === initial ? "bright" : "");
         button.type = "button";
+        if(result.sandbox && name!=="Free") button.textContent="Test checkout";
         button.disabled = (current && name==="Free") || (result.plan && result.plan!=="Free" && !current) || (name !== "Free" && !result.paymentsReady);
         button.addEventListener("click",async () => {
           if (submitting) return;
@@ -90,6 +92,11 @@
           note(name === "Free" ? "Activating Free hosting…" : "Opening checkout…");
           try {
             const checkout = await request({plan:name});
+            if(checkout.sandboxPayment) {
+              await load();
+              note("Sandbox payment submitted. No funds are needed. Refresh payment history to see the provider confirmation.");
+              return;
+            }
             if (checkout.url) {
               const url = new URL(checkout.url);
               if (url.protocol !== "https:" || !/(^|\.)nowpayments\.io$/i.test(url.hostname) || url.username || url.password || (url.port && url.port !== "443")) throw Error("The payment provider returned an invalid checkout address.");
@@ -108,10 +115,11 @@
         card.append(list,button);
         byId("plans").append(card);
       }
-      byId("checkout-note").textContent = result.paymentsReady ? (result.sandbox?"Sandbox checkout records test payments. Live hosting credit requires a real payment.":"NOWPayments confirms your crypto payment before your paid plan activates.") : "Paid checkout is currently unavailable.";
+      byId("checkout-note").textContent = result.paymentsReady ? (result.sandbox?"Test checkout simulates a "+currency.format(result.sandboxAmount)+" payment. No funds are sent and your hosting plan stays the same.":"NOWPayments confirms your crypto payment before your paid plan activates.") : "Paid checkout is currently unavailable.";
       showOrders(result.orders);
       note("");
     }
+    byId("refresh-orders").addEventListener("click",()=>load().catch(error=>note(error.message)));
     try { await load(); } catch(error) { if(error.status===401) login(); else note(error.message); }
   }
 
@@ -180,7 +188,12 @@
     }));
     signOut.addEventListener("click",bind(signOut,async()=>{await request({action:"logout"});loginView();note("Logged out.");}));
     refresh.addEventListener("click",bind(refresh,load));
-    sync.addEventListener("click",bind(sync,async()=>{await request({action:"sync-status"});note("Discord status updated.");}));
+    sync.addEventListener("click",bind(sync,async()=>{const result=await request({action:"sync-status"});note(result.state==="unchanged"?"The Discord panel is already current.":"Status panel published to Discord.");}));
+    const checkReviews=byId("check-reviews");
+    checkReviews.addEventListener("click",bind(checkReviews,async()=>{
+      const {count}=await request({action:"check-reviews"});
+      note(count?count+" featured Discord review"+(count===1?" is":"s are")+" available.":"No matching 4- or 5-star feedback. Check that DISCORD_CLIENT_ID is the ID of the MzBot that posted the ratings.");
+    }));
     try {await load();} catch(error) {
       if(error.status===401){loginView();note("");}else note(error.message);
     }
