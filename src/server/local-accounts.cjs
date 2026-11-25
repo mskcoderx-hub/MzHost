@@ -14,6 +14,7 @@ module.exports=function localAccounts(databaseFile,{localTest=false}={}) {
   }
   const limits=new Map();
   return accounts({
+    countUsers:()=>db.prepare("SELECT count(*) AS n FROM users").get().n,
     session:(token,now)=>db.prepare("SELECT email FROM sessions WHERE token=? AND expires>?").get(token,now),
     user:email=>db.prepare("SELECT salt,hash,verifiedAt FROM users WHERE email=?").get(email),
     logout:token=>db.prepare("DELETE FROM sessions WHERE token=?").run(token),

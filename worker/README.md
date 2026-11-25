@@ -12,17 +12,11 @@ ssh -p 2228 connect@hk.meowlix.in
 
 Complete the gateway login. At the Linux prompt paste the clipboard contents and press Enter. If the SSH shell is already open, run the clipboard command in a second PowerShell window and paste into the existing shell. The helper installs the worker under `~/mzhost-worker`, then runs two small projects. The first run may download the official Python and Node Alpine images. A successful run prints `MzHost Python OK` and `MzHost Node OK`. On failure keep the Docker error for diagnosis. The checks publish zero ports and clean up their labeled container.
 
-## Connect the private dashboard
+## Connect hosting
 
-1. Add `VPS_TEST_EMAIL` to the MzHost Vercel environment. Use your verified MzHost account email.
-2. Generate a separate worker secret in PowerShell with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Save that value as `VPS_WORKER_KEY` in the same Vercel environment. The VPS will prompt for the same value. Keep it out of Git.
-3. Deploy the new API and dashboard to the Vercel environment that uses your preview MongoDB. For the linked production branch run these commands on the PC:
-
-```powershell
-git add -- .env.example api/preview.js vercel.json src/public/dashboard.js src/server/accounts.cjs src/server/mongo-accounts.cjs src/server/runtime-test.cjs test/runtime-test.test.cjs worker
-git commit -m "Connect a private Docker runtime worker for hosting tests"
-git push
-```
+1. Set a private `VPS_WORKER_KEY` (at least 32 random characters) in Vercel Production. The VPS prompts for the same key. Every verified account selects its own hosting plan at `/billing`.
+2. Set up MongoDB and the provider credentials in [deployment.md](deployment.md).
+3. Deploy the repository to Vercel and install the current worker with the clipboard helper above.
 
 4. Once Vercel is ready, start the worker **in the VPS shell**:
 
@@ -31,7 +25,7 @@ cd ~/mzhost-worker
 python3 vps.py --origin https://mzhost.vercel.app
 ```
 
-5. Enter the worker key at the hidden prompt and leave the terminal open. Sign in to MzHost, open a Python server and add `main.py` in Files. Set it as startup. Use this project to test output over time:
+5. Enter the worker key at the hidden prompt and leave the terminal open. Sign in to MzHost, choose Free in Billing, open a Python server and add `main.py` in Files. Set it as startup. Use this project to test output over time:
 
 ```python
 import time
@@ -49,6 +43,12 @@ name = input("Your name? ")
 print(f"Hello, {name}!")
 ```
 
-## Trial limits
+## Worker capacity and storage
 
-The worker polls Vercel over outbound HTTPS. Only the configured account can launch a project and one project can run at a time. Container output and process exit codes appear in the private Console. Other dashboard resource graphs and release history remain simulations. The trial uses standard-library projects, 128 MB RAM, a quarter CPU, read-only project files, writable temporary storage and disabled container networking. Customer secrets, dependency installation, external bot connections and public hosting are outside this trial. Disconnecting the foreground worker ends the test. A future production worker will need persistent supervision, storage, network isolation, resource enforcement and recovery testing.
+One worker process supplies one slot. To run a second customer concurrently, start `python3 ~/mzhost-worker/vps.py --slot 1` in a second VPS terminal. Keep each slot ID unique on this deployment. Each account can use one slot at a time. When all slots are occupied, another customer sees a capacity message. Additional slots consume CPU, RAM and disk on the same VPS.
+
+Plans enforce CPU and memory in Docker. Files uploaded in the dashboard are a read-only project snapshot. Programs write persistent files under `/data` (also available as `MZHOST_DATA`). A plan-sized ext4 image reserves space per account with an isolated directory for each project. Deleting a workspace entry retains its disk data. Back up the VPS data separately. Moving to a smaller disk plan after using a larger disk needs a storage migration. The MongoDB workspace upload limit is 3 MB.
+
+The storage check requires Linux loop mounts and e2fsprogs on the VPS. A successful original Docker check did not test those features. Run the updated installer before enabling sales. If the provider blocks loop mounts in LXC, use a quota-capable worker host. Keep the shared mail service isolated.
+
+The worker currently disables container networking. Public bot connections, dependency installation and internet-facing services still require an isolated egress design. A foreground worker exits when its terminal closes. Configure process supervision for ongoing hosting.

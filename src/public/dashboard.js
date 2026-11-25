@@ -16,15 +16,18 @@ let view = routes.includes(location.hash.slice(1)) ? location.hash.slice(1) : "s
 let draft, reviewing=false;
 let cloud=false, revision=0, acknowledged, syncing=false, conflict=false;
 let vpsEnabled=false, vpsStatus=null, vpsPending=false, vpsReading=false;
+let accountPlan=null;
 let signedIn=false, terminalRevision=0;
-let accessReason="",accountEmail="",statusReadFailed=false;
+let accessReason="",statusReadFailed=false;
 
 function serverStatus(s) {
   if(!signedIn) return s.started?"Running (preview)":s.files.length?"Stopped (preview)":"Waiting for files";
-  if(!vpsEnabled) return accessReason==="private_account"?"Private hosting":"Hosting setup needed";
+  if(!vpsEnabled) return "Hosting setup needed";
+  if(!accountPlan) return "Choose a plan";
   if(!vpsStatus) return statusReadFailed?"Status unavailable":"Checking VPS";
   if(!vpsStatus.online) return "Worker offline";
   if(vpsStatus.serverId===s.id) return label(vpsStatus.state);
+  if(vpsStatus.available===false) return "Hosting slots busy";
   return s.files.length?"Stopped":"Waiting for files";
 }
 function renderServerStatuses() {
@@ -43,7 +46,8 @@ function renderVps() {
   const same=remote?.serverId===s?.id;
   const busy=remote && ["starting","queued","running"].includes(remote.state);
   const occupied=remote?.serverId && !same && busy;
-  $("vps-state").textContent=!remote?"Checking worker connection…":!remote.online?"Worker offline":occupied?"Another project is using the test worker":same?"Worker online / "+remote.state:"Worker online / ready";
+  const full=remote?.available===false && !busy;
+  $("vps-state").textContent=!remote?"Checking worker connection…":!remote.online?"Worker offline":occupied?"Another project in your account is running":full?"Hosting slots busy":same?"Worker online / "+remote.state:"Worker online / ready";
   const output=$("vps-output");
   const follow=output.scrollHeight-output.scrollTop-output.clientHeight<24;
   const text=same && remote.logs ? remote.logs : "Awaiting process output.";
@@ -53,14 +57,14 @@ function renderVps() {
   }
   const running=same && remote.state==="running";
   const prompt=$("vps-command").elements.line;
-  prompt.disabled=!remote?.online || occupied || (busy && !running) || (running && !remote.interactive);
+  prompt.disabled=!remote?.online || occupied || full || (busy && !running) || (running && !remote.interactive);
   $("terminal-send").disabled=prompt.disabled || vpsPending || (running && remote.inputPending);
   $("terminal-label").textContent=running?"Process input":"Run a file";
   prompt.placeholder=running?"Type a line for the running program":s.runtime==="Python"?"run or python test.py":"run or node index.js";
   $("terminal-hint").textContent=running && !remote.interactive?"Update the VPS worker to enable process input.":same && remote.inputFailed?"The last input could not be delivered.":same && remote.inputPending?"Sending input…":"";
-  $("vps-run").disabled=vpsPending || !remote?.online || busy || !W.startup(s).selected || syncedChangesPending();
+  $("vps-run").disabled=vpsPending || !remote?.online || busy || full || !W.startup(s).selected || syncedChangesPending();
   $("vps-stop").disabled=vpsPending || !remote?.online || !remote.serverId || !busy;
-  $("vps-stop").textContent=occupied?"Stop other test":"Stop";
+  $("vps-stop").textContent=occupied?"Stop my other project":"Stop";
   renderServerStatuses();
 }
 function syncedChangesPending() {return syncing || acknowledged!==state || conflict;}
@@ -79,7 +83,7 @@ async function refreshVps() {
 async function controlVps(action,details={}) {
   if(vpsPending || !active()) return;
   if(action==="run" && syncedChangesPending()) {flash("Wait for the workspace to finish saving.");return;}
-  if(action==="stop" && vpsStatus?.serverId!==active().id && !confirm("Stop the other project on the private VPS worker?")) return;
+  if(action==="stop" && vpsStatus?.serverId!==active().id && !confirm("Stop the other running project in your account?")) return;
   terminalRevision++;
   vpsPending=true;renderVps();
   try {
@@ -128,7 +132,7 @@ async function saveCloud() {
         conflict=true;
         throw Error("This workspace changed in another tab. Reload to open the saved version.");
       }
-      if(!response.ok) throw Error(response.status===413?"Workspace is too large to save. Remove large files or backups.":"Workspace could not be saved. Check your connection and retry.");
+      if(!response.ok) throw Error(response.status===402?"Choose a plan in Billing before creating a server.":response.status===413?"Workspace is too large to save. Remove large files or backups.":"Workspace could not be saved. Check your connection and retry.");
       revision=(await response.json()).revision;
       acknowledged=snapshot;
     }
@@ -183,6 +187,7 @@ function head(title, right="") {
 }
 function controls(s) {
   if(view==="console") {
+    if(signedIn && !accountPlan) return '<a class="button primary" href="/billing">Choose a plan</a>';
     if(signedIn && !vpsEnabled) return "";
     if(vpsEnabled) return '<div class="controls"><button id="vps-run" data-action="vps-run" class="accent" disabled>Start</button><button id="vps-stop" data-action="vps-stop" disabled>Stop</button></div>';
     return '<div class="controls"><button data-action="start" class="accent" '+(s.started || !W.startup(s).selected?'disabled':'')+'>Start</button><button data-action="stop" '+(s.started?'':'disabled')+'>Stop</button>'+(s.started?button("Restart","restart"):"")+'</div>';
@@ -212,8 +217,9 @@ function startupPicker(s) {
 }
 function consoleBox(s, full) {
   const startup = full ? '<div class="console-start">'+startupPicker(s)+'<a href="#files">Manage files</a></div>' : "";
+  if(full && signedIn && !accountPlan) return '<section class="box terminal">'+head("Project terminal")+startup+'<p>Choose a hosting plan in Billing to start this project.</p></section>';
   if(full && signedIn && !vpsEnabled) return '<section class="box terminal">'+head("Project terminal")+
-    startup+'<p>'+escapeHTML(accessReason==="private_account"?"Signed in as "+accountEmail+". Only the designated test account can run projects on this VPS. To test this workspace, set VPS_TEST_EMAIL to this email and redeploy.":accessReason==="storage_required"?"This deployment needs MongoDB workspace storage before it can connect to the VPS.":"The private VPS connection needs configuration. Check VPS_TEST_EMAIL and VPS_WORKER_KEY in the deployment settings.")+'</p></section>';
+    startup+'<p>'+escapeHTML(accessReason==="storage_required"?"The host needs MongoDB workspace storage before projects can run.":"The host is setting up the VPS connection. Your project files are saved.")+'</p></section>';
   if(vpsEnabled && full) return '<section class="box terminal">'+head("Project terminal",'<span id="vps-state" role="status"></span>')+
     startup+'<pre id="vps-output" class="log-output" aria-label="Project output"></pre>'+
     '<form class="cmd" id="vps-command"><label for="vps-line" id="terminal-label">Run a file</label><input id="vps-line" name="line" autocomplete="off" spellcheck="false" maxlength="512" disabled><button id="terminal-send" class="accent" disabled>Send</button></form><p id="terminal-hint" role="status"></p></section>';
@@ -291,10 +297,11 @@ function options(list,current) {
 }
 function configuration(s) {
   const entries=W.startup(s).candidates.map(f=>f.path);
+  const memoryOptions=signedIn && accountPlan?[W.plans[accountPlan].memory]:[150,256,512,1024,2048,4096].filter(m=>!s.plan || m<=W.plans[s.plan].memory);
   const setup=s.plan ? '<label>Runtime version<select name="version">'+options(W.versions[s.runtime],s.version)+'</select></label><label>App database (preview)<select name="database">'+options(W.databases,s.database)+'</select></label>' : "";
   return '<section class="box">'+head("Startup configuration")+'<form id="settings" class="form-grid">'+field("Server name","name",s.name,'required maxlength="40"')+
     '<label>Runtime<select name="runtime">'+options(Object.keys(W.runtimes),s.runtime)+'</select></label><label>Entry file<select name="entry"><option value="">Choose later</option>'+options(entries,s.entry)+'</select></label>'+
-    '<label>Memory limit (MB)<select name="memory">'+options([256,512,1024,2048].filter(m=>!s.plan || m<=W.plans[s.plan].memory),s.memory)+'</select></label>'+
+    '<label>Memory limit (MB)<select name="memory">'+options(memoryOptions,s.memory)+'</select></label>'+
     setup+'<label class="check full"><input type="checkbox" name="restart" '+(s.restart?"checked":"")+'> Restart after a simulated crash</label>'+
     '<div class="full controls"><button class="accent">Save configuration</button>'+button("Delete server","delete-server","","danger")+'</div></form></section>';
 }
@@ -310,25 +317,26 @@ function fleet() {
     '<span class="server-state" data-server-status="'+escapeHTML(s.id)+'"></span><div class="controls">'+button("Files","server-files",s.id)+button("Open console","server-console",s.id,"accent")+'</div></article>').join("");
 }
 function setupPage() {
-  draft ??= {name:"",runtime:"Python",version:W.versions.Python[0],plan:"Starter",database:"No database"};
+  if(signedIn && !accountPlan) {location.replace("/billing");return;}
+  draft ??= {name:"",runtime:"Python",version:W.versions.Python[0],plan:accountPlan || "Free",database:"No database"};
   const p=W.plans[draft.plan];
   const summary='<dl class="specs">'+[
     ["Runtime",draft.runtime+" "+draft.version],["Plan",draft.plan],["Resources",p.memory+" MB RAM / "+p.disk+" GB disk / "+p.cpu+" vCPU"],
-    ["App database",draft.database],["Proposed monthly price","$"+p.price+" USD"],["Due in preview","$0"]
+    ["App database",draft.database],["Monthly price","$"+p.price+" USD"]
   ].map(([key,value])=>'<div><dt>'+key+'</dt><dd>'+escapeHTML(value)+'</dd></div>').join("")+'</dl>';
   $("context").innerHTML='<p class="crumb"><a href="#servers">My servers</a> / New server</p><h1>'+(reviewing?"Review your server":"Set up your server")+'<span class="period">.</span></h1>';
   document.title=(reviewing?"Review server":"New server")+" | MzHost";
   if(reviewing) {
-    $("content").innerHTML='<section class="box setup-card">'+head(escapeHTML(draft.name))+summary+'<p class="subtle">Creating this preview reserves a workspace for your files. Hosting and database provisioning are simulated.</p><div class="controls">'+button("Edit setup","edit-setup")+button("Create server","confirm-setup","","accent")+'</div></section>';
+    $("content").innerHTML='<section class="box setup-card">'+head(escapeHTML(draft.name))+summary+'<p class="subtle">Create a workspace, upload your files, and start the project from Console. App databases are preview settings.</p><div class="controls">'+button("Edit setup","edit-setup")+button("Create server","confirm-setup","","accent")+'</div></section>';
     return;
   }
   const choice=(title,key,list)=>'<label>'+title+'<select name="'+key+'">'+options(list,draft[key])+'</select></label>';
   $("content").innerHTML='<form id="setup" class="box setup-card">'+head("Project settings")+'<div class="form-grid">'+field("Server name","name",draft.name,'required maxlength="40" placeholder="my-bot" autocapitalize="none"')+
     choice("Runtime","runtime",Object.keys(W.runtimes))+choice("Version","version",W.versions[draft.runtime])+
-    choice("Hosting plan","plan",Object.keys(W.plans))+choice("App database (optional)","database",W.databases)+'</div><p class="subtle" id="plan-hint">'+planHint(p)+'</p><p class="subtle">You can bring a database connection later through Environment. Use sample values during testing.</p><div class="controls"><button class="accent">Review setup</button><a href="#servers">Cancel</a></div></form>';
+    choice("Hosting plan","plan",signedIn?[accountPlan]:Object.keys(W.plans))+choice("App database (optional)","database",W.databases)+'</div><p class="subtle" id="plan-hint">'+planHint(p)+'</p><p class="subtle">You can bring a database connection later through Environment. Use sample values during testing.</p><div class="controls"><button class="accent">Review setup</button><a href="#servers">Cancel</a></div></form>';
 }
 function planHint(p) {
-  return p.memory+" MB memory · "+p.disk+" GB disk · "+p.cpu+" vCPU · $"+p.price+"/month proposed. Free to preview.";
+  return p.memory+" MB RAM · "+p.disk+" GB disk allowance · "+p.cpu+" vCPU.";
 }
 function onboarding(s) {
   if(signedIn) {
@@ -405,6 +413,7 @@ function download(f) {
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 function createServer() {
+  if(signedIn && !accountPlan) {location.assign("/billing");return;}
   if(state.servers.length>=W.serverLimit) throw Error("This preview workspace can hold "+W.serverLimit+" servers.");
   draft=null;reviewing=false;
   if(view==="setup") setupPage(); else location.hash="setup";
@@ -522,9 +531,10 @@ $("content").addEventListener("submit",e=>{
         const name=W.name(data.get("name"));
         if(next.servers.some(item=>item.id!==s.id && item.name===name)) throw Error("Another server already uses this name.");
         const runtime=data.get("runtime"), entry=data.get("entry"), memory=Number(data.get("memory"));
-        if(!Object.hasOwn(W.runtimes,runtime)||(entry && !W.runnable(runtime,s.files.find(f=>f.path===entry)))||![256,512,1024,2048].includes(memory)) throw Error("Choose a valid runtime, entry file and memory limit.");
+        if(!Object.hasOwn(W.runtimes,runtime)||(entry && !W.runnable(runtime,s.files.find(f=>f.path===entry)))||![150,256,512,1024,2048,4096].includes(memory)) throw Error("Choose a valid runtime, entry file and memory limit.");
         if(s.started && !entry) throw Error("Stop the server before clearing its startup file.");
         const reboot=s.started && (runtime!==s.runtime||entry!==s.entry||memory!==s.memory);
+        if(signedIn && accountPlan) s.plan=accountPlan;
         if(s.plan && memory>W.plans[s.plan].memory) throw Error("Memory exceeds this plan.");
         if(s.plan) {
           if(!W.versions[runtime].includes(data.get("version")) || !W.databases.includes(data.get("database"))) throw Error("Review your version and database.");
@@ -593,11 +603,11 @@ async function initialize() {
     if(!session.email) { location.replace("./account#login");return; }
     owner="account:"+session.email;
     signedIn=true;
+    accountPlan=session.plan;
     cloud=session.workspaceStorage==="mongodb";
     vpsEnabled=session.vpsTest===true;
     accessReason=session.runtimeAccess;
-    accountEmail=session.email;
-    if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project on the private VPS.";
+    if(vpsEnabled) document.querySelector(".rail-note").textContent="Use the Console to start and stop your project.";
   }
   storageKey="mzhost:sandbox:v1:"+owner;
   if(cloud) {

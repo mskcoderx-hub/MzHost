@@ -35,3 +35,49 @@ document.querySelectorAll("[data-open]").forEach(button => {
     document.querySelector(".project.selected").focus({ preventScroll: true });
   });
 });
+
+async function loadFeaturedReviews() {
+  const response = await fetch("/api/reviews");
+  if (!response.ok) throw Error("Reviews unavailable");
+  const data = await response.json();
+  const list = document.getElementById("featured-reviews");
+  const caption = document.getElementById("review-caption");
+  const reviews = Array.isArray(data.reviews) ? data.reviews : [];
+  const featured = reviews.filter(review =>
+    review && [4, 5].includes(review.stars) && typeof review.text === "string" && review.text.trim()
+  ).slice(0, 6);
+  if (!featured.length) return;
+
+  for (const review of featured) {
+    const figure = document.createElement("figure");
+    const score = document.createElement("span");
+    const quote = document.createElement("blockquote");
+    const name = document.createElement("figcaption");
+    score.textContent = review.stars + " / 5";
+    quote.textContent = review.text.trim();
+    name.textContent = typeof review.name === "string" && review.name.trim() ? review.name : "Discord member";
+    figure.append(score, quote, name);
+    list.append(figure);
+  }
+  caption.textContent = "Selected 4- and 5-star reviews from our Discord community.";
+  list.hidden = false;
+}
+
+async function updateAccountLinks() {
+  const response = await fetch("/api/session", {cache: "no-store"});
+  if (!response.ok) return;
+  const session = await response.json();
+  const links = document.querySelector(".account-links");
+  const login = links.querySelector(".text-link");
+  const primary = links.querySelector(".nav-button");
+  login.hidden = Boolean(session.email);
+  primary.href = session.email ? "./dashboard" : "./account#register";
+  primary.textContent = session.email ? "Dashboard" : "Create account";
+}
+
+if (location.protocol !== "file:") {
+  loadFeaturedReviews().catch(() => {
+    document.getElementById("review-caption").textContent = "Discord reviews are temporarily unavailable.";
+  });
+  window.addEventListener("pageshow", () => updateAccountLinks().catch(() => {}));
+}

@@ -32,7 +32,7 @@ test("autosaves stay quiet and workspace alerts name the affected servers",async
   process.env.VPS_WORKER_KEY="x".repeat(32);
   process.env.VPS_TEST_EMAIL="other@example.test";
   const privateSession=await request("session");
-  assert.equal(privateSession.runtimeAccess,"private_account");assert.equal(privateSession.vpsTest,false);
+  assert.equal(privateSession.runtimeAccess,"enabled");assert.equal(privateSession.vpsTest,true);
   assert.ok(!JSON.stringify(privateSession).includes(process.env.VPS_TEST_EMAIL));
   process.env.VPS_TEST_EMAIL=email;
   assert.equal((await request("session")).vpsTest,true);

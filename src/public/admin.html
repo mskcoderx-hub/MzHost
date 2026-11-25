@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin | MzHost</title>
+  <link rel="icon" href="/images/MzHostLogo.png">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/service-pages.css">
+  <script defer src="/common.js"></script>
+  <script defer src="/service-pages.js"></script>
+</head>
+<body class="service-page" data-service="admin">
+<a class="skip" href="#main">Skip to content</a>
+<header class="service-mast"><a class="brand" href="/" aria-label="MzHost home"><span class="brand-icon" aria-hidden="true"></span>MzHost</a></header>
+<main id="main" class="service-wrap">
+  <div class="service-heading"><h1>Admin<span>.</span></h1><button type="button" id="sign-out" hidden>Log out</button></div>
+  <p id="message" class="page-note" role="status">Checking your session…</p>
+  <form id="admin-login" class="admin-login" hidden><h2>Administrator sign-in</h2><label>Username<input required name="username" autocomplete="username" maxlength="254"></label><label>Password<input required name="password" type="password" autocomplete="current-password" maxlength="256"></label><button class="bright">Log in</button></form>
+  <div id="admin-data" hidden><dl class="admin-counts"><div><dt>Accounts</dt><dd id="accounts"></dd></div><div><dt>Active plans</dt><dd id="activePlans"></dd></div><div><dt>Online workers</dt><dd id="workers"></dd></div></dl>
+  <section class="small-panel"><div><h2>Discord status</h2><p>Update the status message in your configured Discord channel.</p></div><button type="button" id="sync-status">Sync status</button></section>
+  <section class="section-gap" aria-labelledby="orders-title"><div class="section-heading"><h2 id="orders-title">Recent orders</h2><button type="button" id="refresh">Refresh</button></div><div id="orders"></div></section></div>
+</main>
+<noscript>Enable JavaScript to load this page.</noscript>
+</body>
+</html>

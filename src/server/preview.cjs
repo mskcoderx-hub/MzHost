@@ -23,6 +23,8 @@ const files = new Map([
   ["/images/MzHostBanner.png", ["images/MzHostBanner.png", "image/png"]]
 ]);
 
+for(const page of ["billing","status","admin"]) files.set("/"+page,[page+".html","text/html; charset=utf-8"]);
+for(const asset of ["common.js","service-pages.js","plans.js","service-pages.css","pricing.css"]) files.set("/"+asset,[asset,asset.endsWith(".js")?"text/javascript; charset=utf-8":"text/css"]);
 const root = path.resolve(__dirname, "../..");
 const envFile = path.join(root, ".env");
 if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
@@ -37,7 +39,7 @@ const handleAccount = useMongo ? async (...args)=>(await require("./mongo-accoun
 const server = http.createServer((request, response) => {
   for(const {key,value} of securityHeaders) response.setHeader(key,value);
   if (request.url.startsWith("/api/")) {
-    handleAccount(request.url.slice(5), request, response).catch(error => {
+    handleAccount(request.url.split("?")[0].slice(5), request, response).catch(error => {
       const status=[400,413].includes(error.status)?error.status:503;
       if (!response.headersSent) response.writeHead(status, {"Content-Type":"application/json", "Cache-Control":"no-store"});
       response.end(JSON.stringify({message:status===503?"Account service unavailable. Please try again.":error.message}));

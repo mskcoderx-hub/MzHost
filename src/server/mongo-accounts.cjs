@@ -12,39 +12,76 @@ async function connect(secure) {
     const pending=db.collection("email_verifications");
     const audit=db.collection("audit_events");
     const tests=db.collection("vps_test_worker");
-    await Promise.all([sessions,limits,pending,audit].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
+    await Promise.all([sessions,limits,pending,audit,db.collection("admin_sessions"),db.collection("oauth_states")].map(collection=>collection.createIndex({expires:1},{expireAfterSeconds:0})));
+    await users.createIndex({discordId:1},{unique:true,partialFilterExpression:{discordId:{$type:"string"}}});
+    await db.collection("hosting_orders").createIndex({owner:1,created:-1});
     await pending.createIndex({digest:1},{unique:true});
+    await tests.createIndex({owner:1},{unique:true,partialFilterExpression:{owner:{$type:"string"}}});
+    // Preserve the ownership of an existing private trial during the upgrade.
+    const legacyOwner=process.env.VPS_TEST_EMAIL?.trim().toLowerCase();
+    if(legacyOwner) await tests.updateOne({_id:"primary",owner:{$exists:false},serverId:{$type:"string"}},{$set:{owner:legacyOwner}});
+    const freeStates=["idle","stopped","exited","failed"];
+    const publicStatus={project:0,"input.line":0};
     return accounts({
+      db,client,
       runtime:{
-        get:()=>tests.findOne({_id:"primary"},{projection:{project:0}}),
+        async get(owner) {
+          const live={planProtocol:1,seen:{$gte:new Date(Date.now()-90000)}};
+          const [owned,online,available]=await Promise.all([
+            tests.findOne({owner},{projection:publicStatus}),
+            tests.findOne(live,{projection:{_id:1}}),
+            tests.findOne({...live,state:{$in:freeStates}},{projection:{_id:1}})
+          ]);
+          return {owned,online:Boolean(online),available:Boolean(available)};
+        },
         async poll(report,now) {
+          const slot=report.slot?"slot-"+report.slot:"primary";
           const instance=typeof report.instance==="string" && /^[0-9a-f]{32}$/.test(report.instance)?report.instance:null;
-          await tests.updateOne({_id:"primary"},{$set:{seen:new Date(now),workerInstance:instance},$setOnInsert:{desired:"stop",generation:null,state:"idle"}},{upsert:true});
-          await tests.updateOne({_id:"primary",input:{$ne:null},"input.instance":{$ne:instance}},{$unset:{input:""},$set:{inputFailed:true}});
+          await tests.updateOne({_id:slot},{$set:{seen:new Date(now),workerInstance:instance,planProtocol:report.planProtocol===1?1:0},$setOnInsert:{desired:"stop",generation:null,state:"idle"}},{upsert:true});
+          if(report.generation===null) {
+            await tests.updateOne({_id:slot,desired:"run",state:{$in:["exited","failed"]}},{$set:{desired:"stop",project:null},$unset:{input:""}});
+          }
+          const expiring=await tests.findOne({_id:slot,desired:"run","project.expires":{$type:"number",$lte:now}},{projection:{owner:1,generation:1,"project.plan":1}});
+          if(expiring?.owner) {
+            const renewed=await users.findOne({_id:expiring.owner,plan:expiring.project.plan,planExpires:{$gt:new Date(now)}},{projection:{planExpires:1}});
+            if(renewed) await tests.updateOne({_id:slot,generation:expiring.generation},{$set:{"project.expires":renewed.planExpires.getTime()}});
+          }
+          // Retire private trial jobs and expired paid leases, including on worker reconnect.
+          await tests.updateOne({_id:slot,desired:"run",$or:[{"project.plan":null},{"project.expires":{$type:"number",$lte:now}},{planProtocol:0}]},
+            {$set:{desired:"stop",generation:require("node:crypto").randomUUID(),state:"queued",project:null},$unset:{input:""}});
+          await tests.updateOne({_id:slot,input:{$ne:null},"input.instance":{$ne:instance}},{$unset:{input:""},$set:{inputFailed:true}});
           if(report.generation===null || (typeof report.generation==="string" && report.generation.length===36)) {
-            await tests.updateOne({_id:"primary",generation:report.generation},{$set:{state:report.state,logs:report.logs}});
-            const pending={_id:"primary",generation:report.generation,"input.instance":instance};
+            const run={_id:slot,generation:report.generation};
+            // A stop can overtake a launch. Only accept logs from the issued run generation.
+            await tests.updateOne(run,[{$set:{state:{$literal:report.state},logs:{$cond:[{$eq:["$desired","run"]},{$literal:report.logs},"$logs"]}}}]);
+            const pending={...run,"input.instance":instance};
             if(typeof report.inputAck==="string") {
               await tests.updateOne({...pending,"input.id":report.inputAck},{$unset:{input:""},$set:{inputFailed:report.inputFailed===true}});
             }
             if(report.state!=="running") await tests.updateOne({...pending,input:{$ne:null}},{$unset:{input:""},$set:{inputFailed:true}});
           }
-          return tests.findOne({_id:"primary"});
+          return tests.findOne({_id:slot});
         },
-        input(serverId,generation,line,id) {
-          const filter={_id:"primary",serverId,generation,state:"running",desired:"run",input:null,workerInstance:{$type:"string"},seen:{$gte:new Date(Date.now()-90000)}};
-          return tests.findOneAndUpdate(filter,[{$set:{input:{id:{$literal:id},line:{$literal:line},instance:"$workerInstance"},inputFailed:false}}],{returnDocument:"after",projection:{project:0}});
+        input(owner,serverId,generation,line,id) {
+          const filter={owner,serverId,generation,state:"running",desired:"run",input:null,workerInstance:{$type:"string"},seen:{$gte:new Date(Date.now()-90000)}};
+          return tests.findOneAndUpdate(filter,[{$set:{input:{id:{$literal:id},line:{$literal:line},instance:"$workerInstance"},inputFailed:false}}],{returnDocument:"after",projection:publicStatus});
         },
-        command(serverId,desired,project,generation) {
-          const filter={_id:"primary",serverId};
-          if(desired==="run") {
-            delete filter.serverId;
-            filter.seen={$gte:new Date(Date.now()-90000)};
-            filter.$or=[{serverId},{desired:"stop",state:{$in:["stopped","idle"]}},{state:{$in:["exited","failed"]}}];
+        async command(owner,serverId,desired,project,generation) {
+          const options={returnDocument:"after",projection:publicStatus};
+          const values={owner,serverId,desired,project,generation,state:"queued",inputFailed:false};
+          const update={$set:values,$unset:{input:""}};
+          if(desired==="stop") return tests.findOneAndUpdate({owner,serverId,desired:"run"},update,options);
+          values.logs="";
+          const free={planProtocol:1,state:{$in:freeStates},seen:{$gte:new Date(Date.now()-90000)}};
+          const previous=await tests.findOneAndUpdate({...free,owner},update,options);
+          if(previous) return previous;
+          try {
+            return await tests.findOneAndUpdate(free,update,options);
+          } catch(error) {
+            // Concurrent requests from one account cannot reserve a second slot.
+            if(error.code===11000) return null;
+            throw error;
           }
-          const update={serverId,desired,project,generation,state:"queued",inputFailed:false};
-          if(desired==="run") update.logs="";
-          return tests.findOneAndUpdate(filter,{$set:update,$unset:{input:""}},{returnDocument:"after",projection:{project:0}});
         }
       },
       audit:item=>audit.insertOne({...item,expires:new Date(Date.now()+30*86400000)}),
@@ -85,13 +122,19 @@ async function connect(secure) {
       },
       async save(email,revision,workspace) {
         try {
-          const previous=await workspaces.findOneAndUpdate({_id:email,revision},{$set:{workspace},$inc:{revision:1}},
-              {upsert:revision===0,returnDocument:"before",projection:{"workspace.servers.id":1,"workspace.servers.name":1}});
-          if(!previous && revision!==0) return false;
+          return await client.withSession(session=>session.withTransaction(async()=>{
+            const previous=await workspaces.findOneAndUpdate({_id:email,revision},{$set:{workspace},$inc:{revision:1}},
+              {session,upsert:revision===0,returnDocument:"before",projection:{"workspace.servers.id":1,"workspace.servers.name":1}});
+            if(!previous && revision!==0) return false;
             const before=previous?.workspace?.servers || [];
             const after=workspace.servers;
-            const changed=(from,to)=>from.filter(s=>!to.some(other=>other.id===s.id)).map(s=>s.name);
-            return {added:changed(after,before),removed:changed(before,after)};
+            const changed=(from,to)=>from.filter(s=>!to.some(other=>other.id===s.id));
+            const removed=changed(before,after);
+            if(removed.length) await tests.updateOne({owner:email,serverId:{$in:removed.map(s=>s.id)},desired:"run"},{
+              $set:{desired:"stop",state:"queued",generation:require("node:crypto").randomUUID(),project:null},$unset:{input:""}
+            },{session});
+            return {added:changed(after,before).map(s=>s.name),removed:removed.map(s=>s.name)};
+          }));
         } catch(error) {if(error.code===11000) return false;throw error;}
       }
     },{secure});

@@ -19,8 +19,56 @@ import uuid
 NAME = "mzhost-private-runtime-test"
 LABEL = "com.mzhost.private-runtime=v1"
 IMAGES = {"python:3.12-alpine", "python:3.13-alpine", "node:22-alpine", "node:24-alpine"}
+PLANS = {"Free": (150, "0.4", 1), "Starter": (1024, "0.5", 2), "Standard": (2048, "1", 4), "Plus": (4096, "1.5", 8)}
 project_folder = None
 attached = None
+volume_lock = None
+data_mount = None
+
+
+def host_command(*args):
+    result = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+    if result.returncode:
+        raise RuntimeError("Project storage setup failed at " + args[0] + ". Check VPS filesystem and mount permissions.")
+
+
+def mount_data(volume, directory, disk):
+    global volume_lock, data_mount
+    if not all(isinstance(key,str) and re.fullmatch(r"[a-f0-9]{64}",key) for key in (volume,directory)):
+        raise ValueError("Invalid project volume")
+    root = Path.home() / "mzhost-data"
+    root.mkdir(mode=0o700, exist_ok=True)
+    volume_lock = (root / (volume + ".lock")).open("a")
+    fcntl.flock(volume_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    image = root / (volume + ".ext4")
+    target = root / (volume + ".mount")
+    target.mkdir(mode=0o700, exist_ok=True)
+    if os.path.ismount(target):
+        host_command("umount", str(target))
+    size = disk * 1024 ** 3
+    existing = image.stat().st_size if image.exists() else 0
+    if existing > size:
+        raise ValueError("This project's saved disk exceeds the current plan. Select its previous plan or create a new project.")
+    if existing < size:
+        stat = os.statvfs(root)
+        if stat.f_bavail * stat.f_frsize < size - existing + 2 * 1024 ** 3:
+            raise RuntimeError("Hosting disk capacity reached.")
+    if not existing:
+        with tempfile.NamedTemporaryFile(dir=root, prefix="new-volume-") as temp:
+            os.posix_fallocate(temp.fileno(), 0, size)
+            host_command("mkfs.ext4", "-q", "-F", "-m", "0", temp.name)
+            os.link(temp.name, image)
+    elif existing < size:
+        with image.open("r+b") as handle:
+            os.posix_fallocate(handle.fileno(), existing, size-existing)
+    if existing:
+        host_command("resize2fs", str(image))
+    host_command("mount", "-o", "loop,nodev,nosuid,noexec", str(image), str(target))
+    data_mount = target
+    project_data = target / directory
+    project_data.mkdir(mode=0o700, exist_ok=True)
+    os.chown(project_data, 65534, 65534)
+    return str(project_data)
 
 
 def docker(*args, timeout=30):
@@ -42,7 +90,7 @@ def owned():
 
 
 def remove():
-    global project_folder, attached
+    global project_folder, attached, volume_lock, data_mount
     if owned():
         docker("rm", "-f", NAME)
     if attached is not None:
@@ -56,11 +104,21 @@ def remove():
     if project_folder is not None:
         project_folder.cleanup()
         project_folder = None
+    if data_mount is not None:
+        host_command("umount", str(data_mount))
+        data_mount = None
+    if volume_lock is not None:
+        volume_lock.close()
+        volume_lock = None
 
 
 def launch(project):
     global project_folder, attached
     image, entry, files = project["image"], project["entry"], project["files"]
+    memory, cpu, disk = PLANS[project["plan"]]
+    expires = project.get("expires")
+    if project["plan"] != "Free" and (not isinstance(expires, int) or expires <= time.time()*1000):
+        raise ValueError("This plan has expired.")
     if image not in IMAGES or not isinstance(files, list) or not 1 <= len(files) <= 80:
         raise ValueError("Unsupported image or file count")
     python = image.startswith("python:")
@@ -88,9 +146,11 @@ def launch(project):
         for directory, _, _ in os.walk(folder):
             os.chmod(directory, 0o755)
         command = ["python", "-u", "./" + entry] if python else ["node", "--", "./" + entry]
+        data_dir = mount_data(project["volume"], project["directory"], disk)
         docker("create", "-i", "--name", NAME, "--label", LABEL, "--network", "none", "--read-only",
                "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-               "--pids-limit", "64", "--memory", "128m", "--memory-swap", "128m", "--cpus", "0.25",
+               "--pids-limit", "64", "--memory", f"{memory}m", "--memory-swap", f"{memory}m", "--cpus", cpu,
+               "--mount", "type=bind,src=" + data_dir + ",dst=/data", "--env", "MZHOST_DATA=/data",
                "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16m", "--log-driver", "json-file",
                "--log-opt", "max-size=64k", "--log-opt", "max-file=1", "--workdir", "/opt/project",
                "--mount", "type=bind,src=" + folder + ",dst=/opt/project,readonly", image, *command, timeout=180)
@@ -120,7 +180,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def serve(origin, key):
+def serve(origin, key, slot=0):
     parsed = urllib.parse.urlsplit(origin)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
         raise ValueError("Use the HTTPS site origin, such as https://mzhost.vercel.app")
@@ -137,13 +197,17 @@ def serve(origin, key):
         while True:
             if state == "running":
                 state, logs = inspect_run()
-            body = json.dumps(dict(generation=generation, state=state, logs=logs, instance=instance,
+                if state == "exited":
+                    remove()
+            body = json.dumps(dict(slot=slot, planProtocol=1, generation=generation, state=state, logs=logs, instance=instance,
                                    inputAck=input_ack, inputFailed=input_failed), ensure_ascii=False).encode()
             req = urllib.request.Request(origin.rstrip("/") + "/api/runtime", data=body,
                                          headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
             try:
                 with client.open(req, timeout=15) as response:
                     job = json.loads(response.read(4 * 1024 * 1024))
+                if slot and job.get("slot") != slot:
+                    raise RuntimeError("Deploy the hosting slots API before starting additional workers.")
                 last_contact = time.monotonic()
             except (OSError, ValueError) as exc:
                 print("Worker request failed:", getattr(exc, "code", type(exc).__name__), flush=True)
@@ -156,8 +220,12 @@ def serve(origin, key):
                 input_ack, input_failed = None, False
                 try:
                     if job["desired"] == "run":
+                        if job["project"].get("plan") not in PLANS:
+                            raise ValueError("Update the MzHost deployment to enable hosting plans.")
                         launch(job["project"])
                         state, logs = inspect_run()
+                        if state == "exited":
+                            remove()
                     else:
                         if state == "running":
                             _, logs = inspect_run()
@@ -183,20 +251,28 @@ def serve(origin, key):
 
 
 def smoke():
-    for image, entry, source, marker in [
-        ("python:3.13-alpine", "main.py", 'print("MzHost Python " + input())', "MzHost Python OK"),
-        ("node:24-alpine", "index.js", 'require("node:readline").createInterface({input:process.stdin}).once("line", line => {console.log("MzHost Node " + line); process.exit(0)})', "MzHost Node OK"),
-    ]:
-        try:
-            launch(dict(image=image, entry=entry, files=[dict(path=entry, text=source)]))
+    probe_volume = uuid.uuid4().hex + uuid.uuid4().hex
+    try:
+        for image, entry, source, marker in [
+            ("python:3.13-alpine", "main.py", 'from pathlib import Path\nPath("/data/smoke").write_text(input())\nprint("MzHost Python OK")', "MzHost Python OK"),
+            ("node:24-alpine", "index.js", 'const saved=require("node:fs").readFileSync("/data/smoke","utf8"); require("node:readline").createInterface({input:process.stdin}).once("line", line => {console.log("MzHost Node "+(saved===line?line:"FAILED")); process.exit(0)})', "MzHost Node OK"),
+        ]:
+            launch(dict(plan="Free", volume=probe_volume, directory="0"*64, image=image, entry=entry, files=[dict(path=entry, text=source)]))
             os.write(attached.stdin.fileno(), b"OK\n")
             code = docker("wait", NAME).strip()
             output = docker("logs", NAME).strip()
             if code != "0" or marker not in output:
                 raise RuntimeError("Smoke test failed: " + output)
             print(output, flush=True)
-        finally:
             remove()
+    finally:
+        remove()
+        root = Path.home() / "mzhost-data"
+        (root / (probe_volume + ".ext4")).unlink(missing_ok=True)
+        (root / (probe_volume + ".lock")).unlink(missing_ok=True)
+        target = root / (probe_volume + ".mount")
+        if target.exists():
+            target.rmdir()
 
 
 def shutdown(*_):
@@ -207,9 +283,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--origin", default="https://mzhost.vercel.app")
+    parser.add_argument("--slot", type=int, choices=range(32), default=0, metavar="0..31",
+                        help="Independent hosting slot on this VPS (default 0)")
     args = parser.parse_args()
+    if args.slot:
+        NAME = "mzhost-runtime-slot-" + str(args.slot)
     signal.signal(signal.SIGTERM, shutdown)
-    lock_path = Path.home() / ".mzhost-private-worker.lock"
+    lock_path = Path.home() / (".mzhost-private-worker.lock" if args.slot == 0 else ".mzhost-worker-" + str(args.slot) + ".lock")
     with lock_path.open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -219,6 +299,6 @@ if __name__ == "__main__":
             if args.smoke:
                 smoke()
             else:
-                serve(args.origin, os.environ.get("VPS_WORKER_KEY") or getpass.getpass("VPS worker key: "))
+                serve(args.origin, os.environ.get("VPS_WORKER_KEY") or getpass.getpass("VPS worker key: "), args.slot)
         except KeyboardInterrupt:
             print("Worker stopped.")

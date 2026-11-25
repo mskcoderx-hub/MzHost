@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Plans &amp; billing | MzHost</title>
+  <link rel="icon" href="/images/MzHostLogo.png">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/service-pages.css">
+  <script defer src="/common.js"></script>
+  <script defer src="/service-pages.js"></script>
+</head>
+<body class="service-page" data-service="billing">
+<a class="skip" href="#main">Skip to content</a>
+<header class="service-mast"><a class="brand" href="/" aria-label="MzHost home"><span class="brand-icon" aria-hidden="true"></span>MzHost</a></header>
+<main id="main" class="service-wrap">
+  <div class="service-heading"><h1>Plans &amp; billing<span>.</span></h1><a class="utility-link" href="/dashboard">Open dashboard</a></div>
+  <p class="page-note" id="message" role="status">Loading your plan…</p>
+  <div id="billing-data" hidden>
+    <section class="dark-summary" aria-labelledby="current-label"><div><p class="data-label" id="current-label">Current plan</p><h2 id="current-plan"></h2></div><p id="plan-valid"></p></section>
+    <section class="section-gap" aria-labelledby="choose-title"><h2 id="choose-title">Choose your plan</h2><p class="muted">Paid plans cover 30 days. Prices are in USD. Each account runs one project at a time, subject to available slots. The current worker runs offline Python and Node.js projects. Discord gateway connections and package downloads require outbound networking.</p><div id="plans" class="plan-grid"></div><p id="checkout-note" class="muted"></p></section>
+    <section class="memory-offer" id="boost" hidden><div><h2>Extra memory</h2><p>100 MB more for your Free server for seven days.</p></div><button type="button" id="preview-boost">View ad reward</button></section>
+    <section class="section-gap" aria-labelledby="orders-title"><h2 id="orders-title">Payment history</h2><div id="orders"></div></section>
+  </div>
+  <dialog id="ad-dialog" aria-labelledby="ad-title"><h2 id="ad-title">Free memory boost</h2><p>When rewarded ads launch, completing an ad will add 100 MB to your Free plan for seven days. Ads are currently unavailable.</p><form method="dialog"><button class="bright">Close</button></form></dialog>
+</main>
+<noscript>Enable JavaScript to load this page.</noscript>
+</body>
+</html>

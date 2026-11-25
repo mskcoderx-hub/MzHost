@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./account.css">
   <script defer src="./account.js"></script>
   <script defer src="./file-links.js"></script>
+  <script defer src="./common.js"></script>
 </head>
 <body class="account-page">
   <main class="account-layout">
@@ -29,6 +30,7 @@
             <p class="hint" id="verify-hint" hidden>We’ll email you a link to verify this address and set your password.</p>
             <button type="submit" class="button primary submit" id="submit" disabled>Log in</button>
           </form>
+          <div class="oauth-options"><a id="discord-login" class="button" href="/api/discord-login">Continue with Discord</a><button type="button" class="button" disabled>Google · Coming soon</button></div>
           <a class="logout" id="request-link" href="#register">Request verification link</a>
         </div>
         <div id="signed-in" hidden>

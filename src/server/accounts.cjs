@@ -1,6 +1,8 @@
 const { randomBytes, scrypt, createHash, timingSafeEqual } = require("node:crypto");
 const {record:writeEvent,mailSettings,sendVerification}=require("./notifications.cjs");
 const {runtimeAccess,runtimeTest}=require("./runtime-test.cjs");
+const services=require("./service.cjs");
+const {currentPlan,plans}=require("./billing.cjs");
 const derive = require("node:util").promisify(scrypt);
 const week = 7 * 24 * 60 * 60;
 const digest = value => createHash("sha256").update(value).digest("hex");
@@ -9,7 +11,7 @@ const hashOptions = {N:32768, r:8, p:3, maxmem:64*1024*1024};
 function validServer(server) {
   const list=(value,max,check)=>Array.isArray(value) && value.length<=max && value.every(check);
   const runtime=value=>["Python","Node.js"].includes(value);
-  const memory=value=>[256,512,1024,2048].includes(value);
+  const memory=value=>[150,256,512,1024,2048,4096].includes(value);
   const id=value=>typeof value==="string" && /^[a-f0-9-]{36}$/i.test(value);
   const file=f=>f && typeof f.path==="string" && f.path.length<=160 &&
     (f.binary===true ? typeof f.data==="string" && f.data.length<=349528 && /^[A-Za-z0-9+/]*={0,2}$/.test(f.data) : typeof f.text==="string" && Buffer.byteLength(f.text)<=262144);
@@ -17,7 +19,7 @@ function validServer(server) {
   const snapshot=s=>project(s) && id(s.id) && Number.isFinite(s.time);
   const event=e=>e && Number.isFinite(e.time) && typeof e.message==="string";
   return project(server) && id(server.id) && typeof server.name==="string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(server.name) &&
-    (!server.plan || ["Starter","Standard","Plus"].includes(server.plan)) && memory(server.memory) && Number.isFinite(server.started) &&
+    (!server.plan || Object.hasOwn(plans,server.plan)) && memory(server.memory) && Number.isFinite(server.started) &&
     list(server.backups,5,b=>snapshot(b) && memory(b.memory)) && list(server.deployments,3,r=>snapshot(r) && typeof r.name==="string") &&
     list(server.logs,140,event) && list(server.activity,80,event) && Array.isArray(server.env) &&
     server.env.every(v=>v && typeof v.key==="string" && /^[A-Za-z_][A-Za-z_0-9]{0,79}$/.test(v.key) && typeof v.value==="string" && v.value.length<=4096);
@@ -52,12 +54,14 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
     const now = Date.now();
     const host = req.headers.host;
     if (!secure && !/^(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(host || "")) return send(403, {});
+    if(services.actions.includes(action)) return services.service({action,store,db:store.db,client:store.client,secure,req,res,send,readBody,sameOrigin,oldToken});
     if(action==="runtime" && req.headers.authorization) return runtimeTest({req,send,readBody,store,now});
     if (action === "workspace" || action==="runtime" || (action === "session" && req.method === "GET")) {
       const session = await store.session(oldToken,now);
-      const verified=session && (session.email==="1" ? localTest : (await store.user(session.email))?.verifiedAt);
+      const user=session && await store.user(session.email);
+      const verified=session && (session.email==="1" ? localTest : user?.verifiedAt);
       const email=verified ? session.email : null;
-      if(action==="runtime") return runtimeTest({req,send,readBody,store,email,sameOrigin,now});
+      if(action==="runtime") return runtimeTest({req,send,readBody,store,email,user,sameOrigin,now});
       if(action==="workspace") {
         if(!store.workspace) return send(404,{});
         if(!email) {console.info(JSON.stringify({event:"workspace.access_denied",time:new Date().toISOString()}));return send(401,{});}
@@ -73,6 +77,16 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
           ids.add(server.id);
         }
         if(ids.size ? !ids.has(workspace.selected) : workspace.selected!=="") return send(400,{message:"Invalid server selection."});
+        const entitlement=currentPlan(user);
+        if(store.db && !entitlement) {
+          const prior=await store.workspace(email);
+          if(workspace.servers.some(s=>!prior.workspace.servers.some(old=>old.id===s.id))) return send(402,{message:"Choose Free or a paid plan in Billing before creating a server."});
+        } else if(store.db) {
+          for(const server of workspace.servers) {
+            server.plan=entitlement;
+            server.memory=plans[entitlement].memory;
+          }
+        }
         const saved=await store.save(email,revision,workspace);
         if(!saved) await record("workspace","workspace.revision_conflict",email);
         if(saved?.added?.length) await record("workspace","preview.server_created",email,saved.added);
@@ -80,7 +94,7 @@ module.exports={hashOptions,accounts(store,{secure=false,localTest=false}={}) {
         return send(saved?200:409,saved?{revision:revision+1}:{message:"Workspace changed."});
       }
       const access=email && (store.runtime?runtimeAccess(email):"storage_required");
-      return send(200,{email,workspaceStorage:store.workspace?"mongodb":"tab",vpsTest:access==="enabled",runtimeAccess:access});
+      return send(200,{email,plan:currentPlan(user),workspaceStorage:store.workspace?"mongodb":"tab",vpsTest:access==="enabled",runtimeAccess:access});
     }
     if (!["login","register","verify","logout"].includes(action)) return send(404, {});
     if (req.method !== "POST") return send(405, {});

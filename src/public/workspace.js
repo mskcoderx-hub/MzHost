@@ -61,11 +61,7 @@ const Workspace = (() => {
     }
     return {selected, command, candidates, suggested, reason};
   }
-  const plans = {
-    Starter: {memory:512, disk:1, cpu:0.25, price:2},
-    Standard: {memory:1024, disk:2, cpu:0.5, price:4},
-    Plus: {memory:2048, disk:4, cpu:1, price:7}
-  };
+  const plans = HostingPlans;
   const versions = {Python:["3.13","3.12"], "Node.js":["24","22"]};
   const databases = ["No database","MongoDB","PostgreSQL","Bring my own"];
   const serverLimit = 5;

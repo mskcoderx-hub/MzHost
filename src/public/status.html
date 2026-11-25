@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>System status | MzHost</title>
+  <link rel="icon" href="/images/MzHostLogo.png">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/service-pages.css">
+  <script defer src="/common.js"></script>
+  <script defer src="/service-pages.js"></script>
+</head>
+<body class="service-page" data-service="status">
+<a class="skip" href="#main">Skip to content</a>
+<header class="service-mast"><a class="brand" href="/" aria-label="MzHost home"><span class="brand-icon" aria-hidden="true"></span>MzHost</a></header>
+<main id="main" class="service-wrap narrow">
+  <div class="service-heading"><h1>System status<span>.</span></h1><button type="button" id="refresh">Refresh</button></div>
+  <section class="dark-summary" aria-labelledby="summary"><div><p class="data-label">MzHost services</p><h2 id="summary" aria-live="polite">Checking services…</h2></div></section>
+  <dl class="service-list"><div><dt>Website</dt><dd id="website">Checking</dd></div><div><dt>Database</dt><dd id="database">Checking</dd></div><div><dt>Hosting worker</dt><dd id="worker">Checking</dd></div></dl>
+  <p id="updated" class="muted"></p><p id="message" class="page-note" role="status"></p>
+</main>
+<noscript>Enable JavaScript to load this page.</noscript>
+</body>
+</html>

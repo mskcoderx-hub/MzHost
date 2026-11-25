@@ -1,0 +1,54 @@
+.service-page { min-height:100vh; color:#121310; background:#f6f6f3; }
+.service-page [hidden] { display:none !important; }
+.service-mast { min-height:72px; display:flex; align-items:center; padding:0 max(6vw, 20px); border-bottom:1px solid var(--line); background:white; }
+.service-wrap { width:min(1100px, 90%); margin:clamp(36px,6vw,80px) auto 90px; }
+.service-wrap.narrow { max-width:800px; }
+.service-heading,.section-heading,.small-panel,.memory-offer,.dark-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.service-heading { margin-bottom:24px; }
+.service-page h1 { margin:0; font-size:clamp(40px,6vw,76px); line-height:1.03; letter-spacing:-.07em; }
+.service-page h1 span { color:#b78800; }
+.service-page h2,.service-page h3 { margin:0; letter-spacing:-.045em; line-height:1.15; }
+.service-page h2 { font-size:clamp(23px,3.5vw,34px); }
+.service-page p { line-height:1.5; }
+.service-page button,.service-page .utility-link { display:inline-flex; align-items:center; justify-content:center; border:1px solid #cecec6; border-radius:6px; padding:10px 16px; min-height:42px; font-family:inherit; font-size:15px; line-height:1.3; font-weight:650; background:white; color:#111; }
+.service-page button:not(:disabled):hover,.service-page .utility-link:hover { border-color:#59594e; }
+.service-page button.bright { background:var(--yellow); border-color:var(--yellow); }
+.service-page button:disabled { cursor:default; color:#58584f; background:#f0f0ea; }
+.page-note:not(:empty) { padding:12px 14px; background:#fff1b6; color:#382e0b; border-radius:5px; }
+.page-note:empty,.muted:empty { display:none; }
+.dark-summary { padding:clamp(22px,4vw,38px); border-radius:10px; color:white; background:#151612; border-left:5px solid var(--yellow); }
+.dark-summary h2 { font-size:clamp(30px,4vw,45px); }
+.dark-summary p { margin:0; }
+.dark-summary .data-label { margin:0 0 10px; font:600 13px/1.4 var(--mono); color:var(--yellow); }
+.section-gap { margin-top:clamp(30px,5vw,55px); }
+.muted,.small-panel p,.memory-offer p { color:#56564e; }
+.plan-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr)); gap:12px; margin:18px 0; }
+.plan-choice { padding:20px; border:1px solid var(--line); border-radius:8px; background:white; display:flex; flex-direction:column; align-items:stretch; }
+.plan-choice.selected-plan { border-color:#957200; }
+.plan-choice h3 { font-size:23px; }
+.plan-price { font-size:28px; font-weight:750; letter-spacing:-.05em; margin:10px 0 16px; }
+.plan-choice ul { margin:0 0 20px; padding:0; list-style:none; }
+.plan-choice li { padding:7px 0; border-top:1px solid var(--line); }
+.plan-choice button { margin-top:auto; }
+.memory-offer,.small-panel { margin-top:20px; border:1px solid var(--line); border-radius:8px; padding:20px; background:white; }
+.small-panel h2,.memory-offer h2 { font-size:23px; }
+.small-panel p,.memory-offer p { margin:5px 0 0; }
+.service-list,.admin-counts { border:1px solid var(--line); background:white; border-radius:8px; }
+.service-list div { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:18px 20px; }
+.service-list div+div { border-top:1px solid var(--line); }
+.service-list dt,.admin-counts dt { font-weight:650; }
+.service-list dd { margin:0; font-family:var(--mono); font-size:14px; }
+.service-list dd[data-state=offline] { color:#943721; }
+.admin-counts { display:flex; flex-wrap:wrap; gap:24px; padding:22px; }
+.admin-counts div { flex:1 1 140px; }
+.admin-counts dd { margin:5px 0 0; font-size:32px; font-weight:700; }
+.admin-login { max-width:430px; background:white; border:1px solid var(--line); border-radius:9px; padding:24px; display:grid; gap:16px; }
+.admin-login label { display:grid; gap:6px; font-weight:600; }
+.admin-login input { min-height:44px; font:inherit; border:1px solid #bdbdb5; border-radius:5px; padding:8px 10px; }
+.table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:8px; margin:16px 0; background:white; }
+.order-table { border-collapse:collapse; width:100%; text-align:left; }
+.order-table th,.order-table td { padding:12px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
+.order-table th { font-size:14px; background:#eeeee9; }
+.order-table tbody tr:last-child td { border:0; }
+.service-page dialog { max-width:min(430px,92%); border:1px solid var(--line); border-radius:10px; padding:26px; }
+.service-page dialog::backdrop { background:rgb(14 15 12 / .48); }

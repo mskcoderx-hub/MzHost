@@ -1,5 +1,8 @@
 const el = id => document.getElementById(id);
 const offline = location.protocol === "file:";
+const requested=new URLSearchParams(location.search).get("next")||"";
+const next=/^\/billing(?:\?plan=(?:Free|Starter|Standard|Plus))?$/.test(requested)?requested:"./dashboard";
+if(next.startsWith("/billing")) el("discord-login").href="/api/discord-login?next=/billing";
 let email = "";
 let busy = false;
 let checking = !offline;
@@ -71,7 +74,7 @@ el("account-form").addEventListener("submit", async event => {
     email = result.email;
     resetPasswords();
     el("message").textContent = registering ? "Your account is ready." : "";
-    location.assign("./dashboard");
+    location.replace(next);
   } catch (error) {
     el("message").textContent = error.message;
   } finally {
@@ -95,7 +98,7 @@ el("logout").addEventListener("click", async () => {
 });
 render();
 if (!offline) {
-  api("session").then(result => { email = result.email || ""; })
+  api("session").then(result => { email = result.email || ""; if(email && location.hash!=="#settings") location.replace(next); })
     .catch(error => { el("message").textContent = error.message; })
     .finally(() => { checking = false; render(); });
 }

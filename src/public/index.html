@@ -8,8 +8,10 @@
   <title>MzHost — Bot hosting</title>
   <link rel="icon" href="./images/MzHostLogo.png">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./pricing.css">
   <script src="./home.js" defer></script>
   <script defer src="./file-links.js"></script>
+  <script defer src="./common.js"></script>
 </head>
 <body id="top">
   <a class="skip" href="#main">Skip to content</a>
@@ -87,30 +89,47 @@
       </div>
     </section>
     <section class="wrap lower pricing" id="pricing" aria-labelledby="pricing-title">
-      <div class="pricing-heading">
-        <h2 id="pricing-title">Bot hosting plans<span class="period">.</span></h2>
-        <p>Proposed monthly prices in USD. Each plan covers one Python or Node.js bot. Prices and limits may change before launch.</p>
+      <div class="plan-banner">
+        <div>
+          <h2 id="pricing-title">Bot hosting plans<span class="period">.</span></h2>
+          <p>Choose the memory, storage and CPU your project needs. Prices are in USD.</p>
+        </div>
       </div>
-      <table class="plan-table" aria-labelledby="pricing-title">
-        <thead><tr><th scope="col">Plan</th><th scope="col">Memory</th><th scope="col">Disk</th><th scope="col">Monthly</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Starter</th><td>512 MB</td><td>1 GB</td><td>$2</td></tr>
-          <tr><th scope="row">Standard</th><td>1 GB</td><td>2 GB</td><td>$4</td></tr>
-          <tr><th scope="row">Plus</th><td>2 GB</td><td>4 GB</td><td>$7</td></tr>
-        </tbody>
-      </table>
+      <div class="plan-grid">
+        <article class="hosting-plan">
+          <h3>Free</h3><p class="plan-price">$0 <small>/ month</small></p>
+          <dl><div><dt>Memory</dt><dd>150 MB</dd></div><div><dt>Storage</dt><dd>1 GB</dd></div><div><dt>CPU limit</dt><dd>0.4 vCPU</dd></div></dl>
+          <a class="button" href="/billing?plan=Free">Choose Free</a>
+        </article>
+        <article class="hosting-plan">
+          <h3>Starter</h3><p class="plan-price">$1.50 <small>/ month</small></p>
+          <dl><div><dt>Memory</dt><dd>1 GB</dd></div><div><dt>Storage</dt><dd>2 GB</dd></div><div><dt>CPU limit</dt><dd>0.5 vCPU</dd></div></dl>
+          <a class="button" href="/billing?plan=Starter">Choose Starter</a>
+        </article>
+        <article class="hosting-plan">
+          <h3>Standard</h3><p class="plan-price">$2.75 <small>/ month</small></p>
+          <dl><div><dt>Memory</dt><dd>2 GB</dd></div><div><dt>Storage</dt><dd>4 GB</dd></div><div><dt>CPU limit</dt><dd>1 vCPU</dd></div></dl>
+          <a class="button" href="/billing?plan=Standard">Choose Standard</a>
+        </article>
+        <article class="hosting-plan">
+          <h3>Plus</h3><p class="plan-price">$5 <small>/ month</small></p>
+          <dl><div><dt>Memory</dt><dd>4 GB</dd></div><div><dt>Storage</dt><dd>8 GB</dd></div><div><dt>CPU limit</dt><dd>1.5 vCPU</dd></div></dl>
+          <a class="button" href="/billing?plan=Plus">Choose Plus</a>
+        </article>
+      </div>
     </section>
     <section class="wrap feedback lower" id="feedback" aria-labelledby="feedback-title">
       <div class="feedback-copy">
         <h2 id="feedback-title">What our clients say<span class="period">.</span></h2>
-        <p>MzHost is in preview. The first stories from people hosting their bots here will appear after launch.</p>
+        <p id="review-caption">Featured reviews from our Discord community will appear here.</p>
       </div>
+      <div class="featured-reviews" id="featured-reviews" hidden></div>
     </section>
     <section class="wrap faq lower" id="faq" aria-labelledby="faq-title">
       <h2 id="faq-title">Questions<span class="period">.</span></h2>
       <div class="faq-list">
         <details><summary>What can I try in the preview?</summary><p>Create a test server, edit files, inspect logs, and restore a backup in the local dashboard.</p></details>
-        <details><summary>Can I deploy my own bot yet?</summary><p>You can upload sample files and test the deployment workflow in your browser. Live bot hosting on the VPS will come later.</p></details>
+        <details><summary>How do I run my project?</summary><p>Sign in, select a hosting plan and create a server. Upload your project in Files, choose its startup file, then open Console to run it and read the output.</p></details>
       </div>
     </section>
   </main>
