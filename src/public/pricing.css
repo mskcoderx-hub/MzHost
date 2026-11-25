@@ -45,8 +45,8 @@
 .hosting-plan:first-child .button { background: var(--yellow); color: #101010; }
 .hosting-plan .button:hover { outline: 2px solid currentColor; outline-offset: -5px; }
 .feedback .feedback-copy { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; max-width:none; }
-#review-motion { border:1px solid #c8c7c0; color:#20201e; background:white; border-radius:24px; padding:8px 14px; font:inherit; font-size:.8rem; cursor:pointer; }
-.featured-reviews:not([hidden]) { display:flex; gap:16px; margin-top:24px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin; scrollbar-color:#cccac1 transparent; padding:4px 0 12px; }
+.featured-reviews:not([hidden]) { display:flex; gap:16px; margin-top:24px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; padding:4px 0; }
+.featured-reviews::-webkit-scrollbar { display:none; }
 .featured-reviews figure { display: flex; flex-direction: column; align-items: start; margin: 0; padding: 22px; background: white; border: 1px solid var(--line); border-radius: 8px; }
 .review-score { display:inline-flex; gap:4px; padding:5px 7px; border-radius:4px; background:#1a1917; }
 .review-score i { width:13px; height:13px; background:#77746c; clip-path:polygon(50% 0,62% 32%,99% 36%,70% 59%,79% 96%,50% 76%,21% 96%,30% 59%,1% 36%,38% 32%); }

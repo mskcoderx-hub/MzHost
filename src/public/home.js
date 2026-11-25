@@ -86,15 +86,12 @@ function showReviews(reviews) {
 }
 
 const reviewRail=document.getElementById("featured-reviews");
-const motionButton=document.getElementById("review-motion");
 const reducedMotion=matchMedia("(prefers-reduced-motion: reduce)");
-let paused=false, hovered=false, inView=false, frame=0, direction=1;
+let touching=false, hovered=false, inView=false, frame=0, direction=1;
 function refreshReviewMotion() {
   cancelAnimationFrame(frame);
   const overflow=reviewRail.scrollWidth-reviewRail.clientWidth;
-  motionButton.hidden=overflow<2 || reducedMotion.matches;
-  motionButton.textContent=paused?"Play scrolling":"Pause scrolling";
-  if(motionButton.hidden || paused || hovered || !inView || document.hidden || reviewRail.matches(":focus-within")) return;
+  if(overflow<2 || reducedMotion.matches || touching || hovered || !inView || document.hidden || reviewRail.matches(":focus-within")) return;
   let position=reviewRail.scrollLeft, last=0, restUntil=0;
   function move(now) {
     const elapsed=last?Math.min(now-last,60):0;
@@ -112,10 +109,10 @@ function refreshReviewMotion() {
   }
   frame=requestAnimationFrame(move);
 }
-motionButton.addEventListener("click",()=>{paused=!paused;refreshReviewMotion();});
 reviewRail.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse"){hovered=true;refreshReviewMotion();}});
 reviewRail.addEventListener("pointerleave",()=>{hovered=false;refreshReviewMotion();});
-for(const event of ["pointerdown","wheel"]) reviewRail.addEventListener(event,()=>{paused=true;refreshReviewMotion();},{passive:true});
+reviewRail.addEventListener("touchstart",()=>{touching=true;refreshReviewMotion();},{passive:true});
+for(const event of ["touchend","touchcancel"]) reviewRail.addEventListener(event,e=>{touching=e.touches.length>0;refreshReviewMotion();},{passive:true});
 for(const event of ["focusin","focusout"]) reviewRail.addEventListener(event,()=>requestAnimationFrame(refreshReviewMotion));
 reducedMotion.addEventListener("change",refreshReviewMotion);
 document.addEventListener("visibilitychange",refreshReviewMotion);
